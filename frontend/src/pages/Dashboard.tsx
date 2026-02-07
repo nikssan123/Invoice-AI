@@ -1,76 +1,141 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { getStats, getInvoices } from "../api/client";
-import type { Stats, InvoiceListItem } from "../types/api";
+import React from 'react';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
+  Avatar,
+  Chip,
+} from '@mui/material';
+import Grid from '@mui/material/Grid';
+import {
+  Receipt as ReceiptIcon,
+  HourglassEmpty as PendingIcon,
+  CheckCircle as ApprovedIcon,
+  Star as PlanIcon,
+  Description as DocIcon,
+  Edit as EditIcon,
+  Upload as UploadIcon,
+  Chat as ChatIcon,
+} from '@mui/icons-material';
+import { mockDashboardStats, mockRecentActivity } from '@/data/mockData';
 
-export default function Dashboard() {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [invoices, setInvoices] = useState<InvoiceListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const Dashboard: React.FC = () => {
+  const stats = [
+    { title: 'Invoices Processed', value: mockDashboardStats.invoicesProcessed, icon: <ReceiptIcon />, color: '#1565C0', bgColor: '#E3F2FD' },
+    { title: 'Pending Approvals', value: mockDashboardStats.pendingApprovals, icon: <PendingIcon />, color: '#F57C00', bgColor: '#FFF3E0' },
+    { title: 'Approved Invoices', value: mockDashboardStats.approvedInvoices, icon: <ApprovedIcon />, color: '#2E7D32', bgColor: '#E8F5E9' },
+    { title: 'Subscription Plan', value: mockDashboardStats.subscriptionPlan, icon: <PlanIcon />, color: '#7B1FA2', bgColor: '#F3E5F5' },
+  ];
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [s, list] = await Promise.all([getStats(), getInvoices()]);
-        if (!cancelled) {
-          setStats(s);
-          setInvoices(list);
-        }
-      } catch (e) {
-        if (!cancelled) setError((e as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const getActivityIcon = (action: string) => {
+    if (action.includes('uploaded')) return <UploadIcon />;
+    if (action.includes('approved')) return <ApprovedIcon />;
+    if (action.includes('updated')) return <EditIcon />;
+    if (action.includes('Chat')) return <ChatIcon />;
+    return <DocIcon />;
+  };
 
-  if (loading) return <div className="card">Loading...</div>;
-  if (error) return <div className="card error">Error: {error}</div>;
-  if (!stats) return null;
+  const getActivityColor = (action: string) => {
+    if (action.includes('uploaded')) return 'primary.main';
+    if (action.includes('approved')) return 'success.main';
+    if (action.includes('updated')) return 'warning.main';
+    return 'grey.600';
+  };
+
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return date.toLocaleDateString();
+  };
 
   return (
-    <>
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Summary</h2>
-        <div className="stats-grid">
-          <div className="stat-card">
-            <div className="value">{stats.total}</div>
-            <div className="label">Total Processed</div>
-          </div>
-          <div className="stat-card">
-            <div className="value">{stats.approved}</div>
-            <div className="label">Approved</div>
-          </div>
-          <div className="stat-card">
-            <div className="value">{stats.pending}</div>
-            <div className="label">Pending</div>
-          </div>
-          <div className="stat-card">
-            <div className="value">{stats.needs_review}</div>
-            <div className="label">Needs Review</div>
-          </div>
-        </div>
-      </div>
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Invoices</h3>
-        {invoices.length === 0 ? (
-          <p>No invoices yet. Upload some from the Upload page.</p>
-        ) : (
-          <ul className="invoice-list">
-            {invoices.map((inv) => (
-              <li key={inv.id}>
-                <Link to={`/invoice/${inv.id}`}>{inv.filename}</Link>
-                <span className={`badge badge-${inv.status}`}>{inv.status.replace("_", " ")}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </>
+    <Box>
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>Dashboard</Typography>
+        <Typography variant="body1" color="text.secondary">Welcome back! Here's what's happening with your invoices.</Typography>
+      </Box>
+
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        {stats.map((stat, index) => (
+          <Grid key={index} size={{ xs: 12, sm: 6, md: 3 }}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>{stat.title}</Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 700 }}>{stat.value}</Typography>
+                  </Box>
+                  <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: stat.bgColor, display: 'flex', alignItems: 'center', justifyContent: 'center', color: stat.color }}>
+                    {stat.icon}
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, lg: 8 }}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>Recent Activity</Typography>
+              <List sx={{ p: 0 }}>
+                {mockRecentActivity.map((activity, index) => (
+                  <ListItem key={activity.id} sx={{ px: 0, borderBottom: index < mockRecentActivity.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+                    <ListItemAvatar>
+                      <Avatar sx={{ bgcolor: 'grey.100', color: getActivityColor(activity.action) }}>{getActivityIcon(activity.action)}</Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Typography variant="subtitle2">{activity.action}</Typography><Typography variant="caption" color="text.secondary">by {activity.user}</Typography></Box>}
+                      secondary={activity.description}
+                    />
+                    <Typography variant="caption" color="text.secondary">{formatTime(activity.timestamp)}</Typography>
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs: 12, lg: 4 }}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>Quick Stats</Typography>
+              <Box sx={{ mb: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="body2" color="text.secondary">Monthly Usage</Typography>
+                  <Typography variant="body2" fontWeight={600}>247 / 500</Typography>
+                </Box>
+                <Box sx={{ height: 8, bgcolor: 'grey.200', borderRadius: 4, overflow: 'hidden' }}>
+                  <Box sx={{ width: '49.4%', height: '100%', bgcolor: 'primary.main', borderRadius: 4 }} />
+                </Box>
+              </Box>
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Approval Rate</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="h5" fontWeight={700} color="success.main">95.1%</Typography>
+                  <Chip label="+2.3%" color="success" size="small" />
+                </Box>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Average Processing Time</Typography>
+                <Typography variant="h5" fontWeight={700}>2.3 min</Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
   );
-}
+};
+
+export default Dashboard;
