@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // TODO: fix
+  url      = env("DATABASE_URL")
+}
+
+model Invoice {
+  id        String         @id @default(uuid())
+  filename  String
+  filePath  String
+  mimeType  String
+  status    String         @default("pending") // pending | approved | needs_review
+  createdAt DateTime       @default(now())
+  fields    InvoiceFields?
+  approvals Approval[]
+
+  @@index([status])
+}
+
+model InvoiceFields {
+  id                String    @id @default(uuid())
+  invoiceId         String    @unique
+  invoice           Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  supplierName      String?
+  supplierVatNumber String?
+  invoiceNumber     String?
+  invoiceDate       String?
+  currency          String?
+  netAmount         Decimal?  @db.Decimal(12, 2)
+  vatAmount         Decimal?  @db.Decimal(12, 2)
+  totalAmount       Decimal?  @db.Decimal(12, 2)
+  confidenceScores  Json?
+  extractedAt       DateTime?
+}
+
+model Approval {
+  id         Int      @id @default(autoincrement())
+  invoiceId  String
+  invoice    Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  approvedBy String
+  approvedAt DateTime @default(now())
+  action     String // approved | needs_review
+
+  @@index([invoiceId])
+}

@@ -1,0 +1,17 @@
+# Optional: start PostgreSQL for local development
+# Run: docker compose up -d
+# Then set backend/.env: DATABASE_URL="postgresql://postgres:postgres@localhost:5432/invoice_mvp"
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: invoice_mvp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
