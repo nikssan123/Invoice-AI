@@ -40,10 +40,13 @@ const Login: React.FC = () => {
       return;
     }
 
+    // TODO: add valid regex for emails
     if (!email.includes('@')) {
       setError('Please enter a valid email address');
       return;
     }
+
+    // TODO: add password validation as well - 6 chars, lower/upper case letter, symbol
 
     setLoading(true);
     try {
@@ -163,7 +166,7 @@ const Login: React.FC = () => {
                   ),
                 }}
               />
-              
+
               <Box sx={{ textAlign: 'right', mb: 3 }}>
                 <Link
                   component="button"
