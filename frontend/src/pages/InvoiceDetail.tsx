@@ -30,6 +30,7 @@ import {
   Person as PersonIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { mockInvoices, mockChatHistory, Invoice, ChatMessage } from '@/data/mockData';
 
 interface TabPanelProps {
@@ -45,6 +46,7 @@ const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
 );
 
 const ConfidenceIndicator: React.FC<{ score: number }> = ({ score }) => {
+  const { t } = useTranslation();
   const getColor = () => {
     if (score >= 0.9) return 'success';
     if (score >= 0.75) return 'warning';
@@ -52,13 +54,13 @@ const ConfidenceIndicator: React.FC<{ score: number }> = ({ score }) => {
   };
 
   const getLabel = () => {
-    if (score >= 0.9) return 'High';
-    if (score >= 0.75) return 'Medium';
-    return 'Low';
+    if (score >= 0.9) return t('invoiceDetail.confidenceHigh');
+    if (score >= 0.75) return t('invoiceDetail.confidenceMedium');
+    return t('invoiceDetail.confidenceLow');
   };
 
   return (
-    <Tooltip title={`${(score * 100).toFixed(0)}% confidence`}>
+    <Tooltip title={t('invoiceDetail.confidencePct', { pct: (score * 100).toFixed(0) })}>
       <Chip
         label={getLabel()}
         color={getColor()}
@@ -71,6 +73,7 @@ const ConfidenceIndicator: React.FC<{ score: number }> = ({ score }) => {
 };
 
 const InvoiceDetail: React.FC = () => {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
@@ -115,7 +118,7 @@ const InvoiceDetail: React.FC = () => {
     if (invoice) {
       setInvoice({ ...invoice, status: 'approved' });
       setIsEditing(false);
-      setSnackbar({ open: true, message: 'Invoice approved successfully!', severity: 'success' });
+      setSnackbar({ open: true, message: t('invoiceDetail.approvedSuccess'), severity: 'success' });
     }
   };
 
@@ -197,7 +200,7 @@ const InvoiceDetail: React.FC = () => {
             </Typography>
           </Box>
           <Chip
-            label={invoice.status === 'approved' ? 'Approved' : invoice.status === 'needs_review' ? 'Needs Review' : 'Pending'}
+            label={invoice.status === 'approved' ? t('invoiceDetail.approved') : invoice.status === 'needs_review' ? t('invoiceDetail.needsReview') : t('invoiceDetail.pending')}
             color={invoice.status === 'approved' ? 'success' : invoice.status === 'needs_review' ? 'error' : 'warning'}
             variant="outlined"
           />
@@ -210,7 +213,7 @@ const InvoiceDetail: React.FC = () => {
                 startIcon={<EditIcon />}
                 onClick={() => setIsEditing(!isEditing)}
               >
-                {isEditing ? 'Cancel Edit' : 'Edit'}
+                {isEditing ? t('invoiceDetail.cancelEdit') : t('invoiceDetail.edit')}
               </Button>
               <Button
                 variant="contained"
@@ -218,7 +221,7 @@ const InvoiceDetail: React.FC = () => {
                 startIcon={<ApproveIcon />}
                 onClick={handleApprove}
               >
-                Approve Invoice
+                {t('invoiceDetail.approveInvoice')}
               </Button>
             </>
           )}
@@ -238,7 +241,7 @@ const InvoiceDetail: React.FC = () => {
         >
           <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
             <Typography variant="subtitle2" color="text.secondary">
-              Document Preview
+              {t('invoiceDetail.documentPreview')}
             </Typography>
           </Box>
           <Box
@@ -291,7 +294,7 @@ const InvoiceDetail: React.FC = () => {
                   <Typography variant="body2">{formData.currency} {formData.vatAmount.toFixed(2)}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 1, borderTop: '1px solid', borderColor: 'grey.200' }}>
-                  <Typography variant="subtitle2" fontWeight={700}>Total:</Typography>
+                  <Typography variant="subtitle2" fontWeight={700}>{t('invoiceDetail.total')}</Typography>
                   <Typography variant="subtitle2" fontWeight={700}>{formData.currency} {formData.totalAmount.toFixed(2)}</Typography>
                 </Box>
               </Box>
@@ -313,8 +316,8 @@ const InvoiceDetail: React.FC = () => {
             onChange={(_, newValue) => setTabValue(newValue)}
             sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
           >
-            <Tab label="Extracted Data" />
-            <Tab label="Chat with Document" />
+            <Tab label={t('invoiceDetail.extractedData')} />
+            <Tab label={t('invoiceDetail.chatWithDocument')} />
           </Tabs>
 
           {/* Extracted Data Tab */}
@@ -322,14 +325,14 @@ const InvoiceDetail: React.FC = () => {
             <Box sx={{ p: 3, height: '100%', overflow: 'auto' }}>
               {isApproved && (
                 <Alert severity="success" sx={{ mb: 3 }}>
-                  This invoice has been approved and is now locked for editing.
+                  {t('invoiceDetail.approvedLocked')}
                 </Alert>
               )}
 
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">Supplier Name</Typography>
+                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.supplierName')}</Typography>
                     <ConfidenceIndicator score={invoice.confidenceScores.supplierName} />
                   </Box>
                   <TextField
@@ -343,7 +346,7 @@ const InvoiceDetail: React.FC = () => {
 
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">VAT Number</Typography>
+                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.vatNumber')}</Typography>
                     <ConfidenceIndicator score={invoice.confidenceScores.vatNumber} />
                   </Box>
                   <TextField
@@ -357,7 +360,7 @@ const InvoiceDetail: React.FC = () => {
 
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">Invoice Number</Typography>
+                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.invoiceNumber')}</Typography>
                     <ConfidenceIndicator score={invoice.confidenceScores.invoiceNumber} />
                   </Box>
                   <TextField
@@ -372,7 +375,7 @@ const InvoiceDetail: React.FC = () => {
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <Box sx={{ flex: 1 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">Invoice Date</Typography>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.invoiceDate')}</Typography>
                       <ConfidenceIndicator score={invoice.confidenceScores.invoiceDate} />
                     </Box>
                     <TextField
@@ -386,7 +389,7 @@ const InvoiceDetail: React.FC = () => {
                   </Box>
                   <Box sx={{ flex: 1 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">Currency</Typography>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.currency')}</Typography>
                       <ConfidenceIndicator score={invoice.confidenceScores.currency} />
                     </Box>
                     <TextField
@@ -403,7 +406,7 @@ const InvoiceDetail: React.FC = () => {
 
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">Net Amount</Typography>
+                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.netAmount')}</Typography>
                     <ConfidenceIndicator score={invoice.confidenceScores.netAmount} />
                   </Box>
                   <TextField
@@ -421,7 +424,7 @@ const InvoiceDetail: React.FC = () => {
 
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">VAT Amount</Typography>
+                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.vatAmount')}</Typography>
                     <ConfidenceIndicator score={invoice.confidenceScores.vatAmount} />
                   </Box>
                   <TextField
@@ -439,7 +442,7 @@ const InvoiceDetail: React.FC = () => {
 
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">Total Amount</Typography>
+                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.totalAmount')}</Typography>
                     <ConfidenceIndicator score={invoice.confidenceScores.totalAmount} />
                   </Box>
                   <TextField
@@ -467,13 +470,13 @@ const InvoiceDetail: React.FC = () => {
                   <Box sx={{ textAlign: 'center', py: 6 }}>
                     <AIIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
                     <Typography variant="h6" sx={{ mb: 1 }}>
-                      Ask questions about this invoice
+                      {t('invoiceDetail.askQuestions')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                      I can help you verify amounts, check calculations, or identify issues.
+                      {t('invoiceDetail.chatHelp')}
                     </Typography>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
-                      {['What is the VAT amount?', 'Check if totals are correct', 'Are there missing fields?'].map((q) => (
+                      {[t('invoiceDetail.suggestedVat'), t('invoiceDetail.suggestedCheck'), t('invoiceDetail.suggestedMissing')].map((q) => (
                         <Chip
                           key={q}
                           label={q}
@@ -548,7 +551,7 @@ const InvoiceDetail: React.FC = () => {
               <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
                 <TextField
                   fullWidth
-                  placeholder="Ask a question about this invoice..."
+                  placeholder={t('invoiceDetail.chatPlaceholder')}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}

@@ -31,6 +31,7 @@ import {
   Delete as DeleteIcon,
   Person as PersonIcon,
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import { mockUsers } from '@/data/mockData';
 import { useAuth } from '@/context/AuthContext';
 
@@ -47,6 +48,7 @@ const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
 );
 
 const Settings: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [tabValue, setTabValue] = useState(0);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -71,10 +73,10 @@ const Settings: React.FC = () => {
     <Box>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          Settings
+          {t('settings.title')}
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Manage your organization and preferences
+          {t('settings.subtitle')}
         </Typography>
       </Box>
 
@@ -84,28 +86,28 @@ const Settings: React.FC = () => {
           onChange={(_, newValue) => setTabValue(newValue)}
           sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
         >
-          <Tab label="Organization" />
-          <Tab label="Users" />
-          <Tab label="Preferences" />
+          <Tab label={t('settings.organization')} />
+          <Tab label={t('settings.users')} />
+          <Tab label={t('settings.preferences')} />
         </Tabs>
 
         {/* Organization Tab */}
         <TabPanel value={tabValue} index={0}>
           <CardContent>
             <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
-              Organization Details
+              {t('settings.organizationDetails')}
             </Typography>
             <Box sx={{ maxWidth: 600 }}>
               <TextField
                 fullWidth
-                label="Organization Name"
+                label={t('settings.organizationName')}
                 value={orgName}
                 onChange={(e) => setOrgName(e.target.value)}
                 sx={{ mb: 3 }}
               />
               <TextField
                 fullWidth
-                label="Business Address"
+                label={t('settings.businessAddress')}
                 value={orgAddress}
                 onChange={(e) => setOrgAddress(e.target.value)}
                 multiline
@@ -114,18 +116,18 @@ const Settings: React.FC = () => {
               />
               <TextField
                 fullWidth
-                label="VAT Number"
+                label={t('settings.vatNumber')}
                 defaultValue="DE123456789"
                 sx={{ mb: 3 }}
               />
               <TextField
                 fullWidth
-                label="Billing Email"
+                label={t('settings.billingEmail')}
                 defaultValue="billing@acmecorp.com"
                 sx={{ mb: 3 }}
               />
               <Button variant="contained">
-                Save Changes
+                {t('settings.saveChanges')}
               </Button>
             </Box>
           </CardContent>
@@ -136,14 +138,14 @@ const Settings: React.FC = () => {
           <CardContent>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Team Members
+                {t('settings.teamMembers')}
               </Typography>
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
                 onClick={() => setInviteDialogOpen(true)}
               >
-                Invite User
+                {t('settings.inviteUser')}
               </Button>
             </Box>
 
@@ -151,10 +153,10 @@ const Settings: React.FC = () => {
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell>User</TableCell>
-                    <TableCell>Role</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell align="right">Actions</TableCell>
+                    <TableCell>{t('settings.user')}</TableCell>
+                    <TableCell>{t('settings.role')}</TableCell>
+                    <TableCell>{t('settings.status')}</TableCell>
+                    <TableCell align="right">{t('settings.actions')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -169,7 +171,7 @@ const Settings: React.FC = () => {
                             <Typography variant="subtitle2">
                               {teamUser.name}
                               {teamUser.email === user?.email && (
-                                <Chip label="You" size="small" sx={{ ml: 1 }} />
+                                <Chip label={t('settings.you')} size="small" sx={{ ml: 1 }} />
                               )}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
@@ -180,14 +182,14 @@ const Settings: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={teamUser.role === 'admin' ? 'Admin' : 'User'}
+                          label={teamUser.role === 'admin' ? t('settings.admin') : t('settings.userRole')}
                           color={teamUser.role === 'admin' ? 'primary' : 'default'}
                           size="small"
                           variant="outlined"
                         />
                       </TableCell>
                       <TableCell>
-                        <Chip label="Active" color="success" size="small" variant="outlined" />
+                        <Chip label={t('settings.active')} color="success" size="small" variant="outlined" />
                       </TableCell>
                       <TableCell align="right">
                         <IconButton size="small">
@@ -209,7 +211,7 @@ const Settings: React.FC = () => {
         <TabPanel value={tabValue} index={2}>
           <CardContent>
             <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
-              Notification Preferences
+              {t('settings.notificationPreferences')}
             </Typography>
             <Box sx={{ maxWidth: 600 }}>
               <FormControlLabel
@@ -221,9 +223,9 @@ const Settings: React.FC = () => {
                 }
                 label={
                   <Box>
-                    <Typography variant="body1">Email Notifications</Typography>
+                    <Typography variant="body1">{t('settings.emailNotifications')}</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Receive email alerts for new invoices and approvals
+                      {t('settings.emailNotificationsDesc')}
                     </Typography>
                   </Box>
                 }
@@ -239,9 +241,9 @@ const Settings: React.FC = () => {
                 }
                 label={
                   <Box>
-                    <Typography variant="body1">Weekly Summary Report</Typography>
+                    <Typography variant="body1">{t('settings.weeklySummaryReport')}</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Get a weekly digest of processed invoices and activity
+                      {t('settings.weeklyReportDesc')}
                     </Typography>
                   </Box>
                 }
@@ -250,7 +252,7 @@ const Settings: React.FC = () => {
               <Divider sx={{ my: 2 }} />
 
               <Typography variant="h6" sx={{ mt: 4, mb: 3, fontWeight: 600 }}>
-                Processing Preferences
+                {t('settings.processingPreferences')}
               </Typography>
               <FormControlLabel
                 control={
@@ -261,9 +263,9 @@ const Settings: React.FC = () => {
                 }
                 label={
                   <Box>
-                    <Typography variant="body1">Auto-approve High Confidence</Typography>
+                    <Typography variant="body1">{t('settings.autoApproveHighConfidence')}</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Automatically approve invoices with 95%+ confidence score
+                      {t('settings.autoApproveDesc')}
                     </Typography>
                   </Box>
                 }
@@ -271,7 +273,7 @@ const Settings: React.FC = () => {
               />
 
               <Button variant="contained" sx={{ mt: 3 }}>
-                Save Preferences
+                {t('settings.savePreferences')}
               </Button>
             </Box>
           </CardContent>
@@ -285,26 +287,26 @@ const Settings: React.FC = () => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Invite Team Member</DialogTitle>
+        <DialogTitle>{t('settings.inviteTeamMember')}</DialogTitle>
         <DialogContent>
           <TextField
             fullWidth
-            label="Email address"
+            label={t('settings.emailAddress')}
             type="email"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
-            placeholder="colleague@company.com"
+            placeholder={t('settings.emailPlaceholder')}
             sx={{ mt: 2 }}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setInviteDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setInviteDialogOpen(false)}>{t('common.cancel')}</Button>
           <Button
             variant="contained"
             onClick={handleInviteUser}
             disabled={!inviteEmail.includes('@')}
           >
-            Send Invite
+            {t('settings.sendInvite')}
           </Button>
         </DialogActions>
       </Dialog>

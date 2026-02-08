@@ -9,6 +9,7 @@ import {
   useScrollTrigger,
 } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
 
 interface PublicLayoutProps {
@@ -16,6 +17,7 @@ interface PublicLayoutProps {
 }
 
 const PublicLayout: React.FC<PublicLayoutProps> = ({ children }) => {
+  const { t } = useTranslation();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   
@@ -25,9 +27,9 @@ const PublicLayout: React.FC<PublicLayoutProps> = ({ children }) => {
   });
 
   const navItems = [
-    { label: 'Product', href: '#product' },
-    { label: 'Pricing', href: '#pricing' },
-    { label: 'Demo', href: '#demo' },
+    { label: t('layout.public.product'), href: '#product' },
+    { label: t('layout.public.pricing'), href: '#pricing' },
+    { label: t('layout.public.demo'), href: '#demo' },
   ];
 
   return (
@@ -76,7 +78,7 @@ const PublicLayout: React.FC<PublicLayoutProps> = ({ children }) => {
               >
                 IV
               </Box>
-              InvoiceAI
+              {t('app.brand')}
             </Typography>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -103,7 +105,7 @@ const PublicLayout: React.FC<PublicLayoutProps> = ({ children }) => {
                   onClick={() => navigate('/dashboard')}
                   sx={{ ml: 2 }}
                 >
-                  Go to Dashboard
+                  {t('layout.public.goToDashboard')}
                 </Button>
               ) : (
                 <>
@@ -116,7 +118,7 @@ const PublicLayout: React.FC<PublicLayoutProps> = ({ children }) => {
                       ml: 1,
                     }}
                   >
-                    Login
+                    {t('layout.public.login')}
                   </Button>
                   <Button
                     component={RouterLink}
@@ -125,7 +127,7 @@ const PublicLayout: React.FC<PublicLayoutProps> = ({ children }) => {
                     color="primary"
                     sx={{ ml: 1 }}
                   >
-                    Start Free Trial
+                    {t('layout.public.startFreeTrial')}
                   </Button>
                 </>
               )}
@@ -153,41 +155,40 @@ const PublicLayout: React.FC<PublicLayoutProps> = ({ children }) => {
           <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
             <Box>
               <Typography variant="h6" sx={{ color: 'white', mb: 2, fontWeight: 700 }}>
-                InvoiceAI
+                {t('app.brand')}
               </Typography>
               <Typography variant="body2" sx={{ maxWidth: 300 }}>
-                AI-powered invoice processing with human approval. 
-                Streamline your accounts payable workflow.
+                {t('landing.footer.tagline')}
               </Typography>
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ color: 'white', mb: 1.5, fontWeight: 600 }}>
-                Product
+                {t('landing.footer.product')}
               </Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>Features</Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>Pricing</Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>Security</Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.features')}</Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.pricing')}</Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.security')}</Typography>
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ color: 'white', mb: 1.5, fontWeight: 600 }}>
-                Company
+                {t('landing.footer.company')}
               </Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>About</Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>Blog</Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>Careers</Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.about')}</Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.blog')}</Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.careers')}</Typography>
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ color: 'white', mb: 1.5, fontWeight: 600 }}>
-                Legal
+                {t('landing.footer.legal')}
               </Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>Privacy Policy</Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>Terms of Service</Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>GDPR</Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.privacyPolicy')}</Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.termsOfService')}</Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.gdpr')}</Typography>
             </Box>
           </Box>
           <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'grey.800' }}>
             <Typography variant="body2" sx={{ textAlign: 'center' }}>
-              © {new Date().getFullYear()} InvoiceAI. All rights reserved.
+              {t('landing.footer.copyright', { year: new Date().getFullYear() })}
             </Typography>
           </Box>
         </Container>

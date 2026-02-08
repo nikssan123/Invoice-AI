@@ -23,32 +23,34 @@ import {
   ArrowForward as ArrowIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import PublicLayout from '@/components/layout/PublicLayout';
 import { pricingPlans } from '@/data/mockData';
 
 const Landing: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const features = [
     {
       icon: <UploadIcon sx={{ fontSize: 40 }} />,
-      title: 'Invoice Upload',
-      description: 'Drag & drop single or bulk invoices. Supports PDF, images, and scanned documents.',
+      title: t('landing.features.upload.title'),
+      description: t('landing.features.upload.description'),
     },
     {
       icon: <AIIcon sx={{ fontSize: 40 }} />,
-      title: 'AI Data Extraction',
-      description: 'Advanced OCR and ML models extract key fields with confidence scoring.',
+      title: t('landing.features.extraction.title'),
+      description: t('landing.features.extraction.description'),
     },
     {
       icon: <ChatIcon sx={{ fontSize: 40 }} />,
-      title: 'Document Chat',
-      description: 'Ask questions about any invoice. AI answers and can update extracted data.',
+      title: t('landing.features.chat.title'),
+      description: t('landing.features.chat.description'),
     },
     {
       icon: <AuditIcon sx={{ fontSize: 40 }} />,
-      title: 'Audit Trail',
-      description: 'Complete history of all changes, approvals, and chat interactions.',
+      title: t('landing.features.audit.title'),
+      description: t('landing.features.audit.description'),
     },
   ];
 
@@ -75,9 +77,9 @@ const Landing: React.FC = () => {
                   color: 'text.primary',
                 }}
               >
-                AI-Powered Invoice Processing with{' '}
+                {t('landing.hero.title')}{' '}
                 <Box component="span" sx={{ color: 'primary.main' }}>
-                  Human Approval
+                  {t('landing.hero.titleHighlight')}
                 </Box>
               </Typography>
               <Typography
@@ -89,8 +91,7 @@ const Landing: React.FC = () => {
                   lineHeight: 1.6,
                 }}
               >
-                Extract, validate, and approve invoices in minutes.
-                Our AI handles the heavy lifting while you maintain full control.
+                {t('landing.hero.subtitle')}
               </Typography>
               <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                 <Button
@@ -100,7 +101,7 @@ const Landing: React.FC = () => {
                   endIcon={<ArrowIcon />}
                   sx={{ px: 4, py: 1.5 }}
                 >
-                  Start Free Trial
+                  {t('landing.hero.startTrial')}
                 </Button>
                 <Button
                   variant="outlined"
@@ -108,11 +109,11 @@ const Landing: React.FC = () => {
                   href="#demo"
                   sx={{ px: 4, py: 1.5 }}
                 >
-                  Book Demo
+                  {t('landing.hero.bookDemo')}
                 </Button>
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                No credit card required • 14-day free trial
+                {t('landing.hero.noCard')}
               </Typography>
             </Grid>
             <Grid size={{ xs: 12, md: 6 }}>
@@ -136,22 +137,22 @@ const Landing: React.FC = () => {
                 <Box sx={{ p: 3 }}>
                   <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
                     <Box sx={{ flex: 1, p: 2, bgcolor: 'grey.100', borderRadius: 2, height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Typography color="text.secondary">PDF Preview</Typography>
+                      <Typography color="text.secondary">{t('landing.demo.pdfPreview')}</Typography>
                     </Box>
                     <Box sx={{ flex: 1 }}>
                       <Box sx={{ mb: 2 }}>
-                        <Typography variant="caption" color="text.secondary">Supplier Name</Typography>
+                        <Typography variant="caption" color="text.secondary">{t('landing.demo.supplierName')}</Typography>
                         <Box sx={{ p: 1, bgcolor: 'success.50', borderRadius: 1, border: '1px solid', borderColor: 'success.200' }}>
                           <Typography variant="body2">Acme Corporation</Typography>
                         </Box>
                       </Box>
                       <Box sx={{ mb: 2 }}>
-                        <Typography variant="caption" color="text.secondary">Total Amount</Typography>
+                        <Typography variant="caption" color="text.secondary">{t('landing.demo.totalAmount')}</Typography>
                         <Box sx={{ p: 1, bgcolor: 'success.50', borderRadius: 1, border: '1px solid', borderColor: 'success.200' }}>
                           <Typography variant="body2">€5,355.00</Typography>
                         </Box>
                       </Box>
-                      <Chip label="98% Confidence" color="success" size="small" />
+                      <Chip label={t('landing.demo.confidence')} color="success" size="small" />
                     </Box>
                   </Box>
                 </Box>
@@ -166,10 +167,10 @@ const Landing: React.FC = () => {
         <Container maxWidth="lg">
           <Box sx={{ textAlign: 'center', mb: 8 }}>
             <Typography variant="h2" sx={{ mb: 2 }}>
-              Everything you need for invoice processing
+              {t('landing.features.sectionTitle')}
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 600, mx: 'auto', fontWeight: 400 }}>
-              From upload to approval, our platform handles the entire workflow with AI assistance.
+              {t('landing.features.sectionSubtitle')}
             </Typography>
           </Box>
 
@@ -210,10 +211,10 @@ const Landing: React.FC = () => {
         <Container maxWidth="lg">
           <Box sx={{ textAlign: 'center', mb: 8 }}>
             <Typography variant="h2" sx={{ mb: 2 }}>
-              See it in action
+              {t('landing.demoSection.title')}
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 600, mx: 'auto', fontWeight: 400 }}>
-              Watch how InvoiceAI processes documents in real-time.
+              {t('landing.demoSection.subtitle')}
             </Typography>
           </Box>
 
@@ -266,7 +267,7 @@ const Landing: React.FC = () => {
                 />
               </Box>
               <Typography variant="body1" color="text.secondary">
-                Click to watch demo video
+                {t('landing.demoSection.clickToWatch')}
               </Typography>
             </Box>
           </Paper>
@@ -277,7 +278,7 @@ const Landing: React.FC = () => {
               size="large"
               onClick={() => navigate('/signup')}
             >
-              Try It Yourself
+              {t('landing.demoSection.tryYourself')}
             </Button>
           </Box>
         </Container>
@@ -288,10 +289,10 @@ const Landing: React.FC = () => {
         <Container maxWidth="lg">
           <Box sx={{ textAlign: 'center', mb: 8 }}>
             <Typography variant="h2" sx={{ mb: 2 }}>
-              Simple, transparent pricing
+              {t('landing.pricing.title')}
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 600, mx: 'auto', fontWeight: 400 }}>
-              Start free, upgrade when you're ready. No hidden fees.
+              {t('landing.pricing.subtitle')}
             </Typography>
           </Box>
 
@@ -317,15 +318,15 @@ const Landing: React.FC = () => {
                         transform: 'translateX(-50%)',
                       }}
                     >
-                      <Chip label="Most Popular" color="primary" size="small" />
+                      <Chip label={t('landing.pricing.mostPopular')} color="primary" size="small" />
                     </Box>
                   )}
                   <CardContent sx={{ p: 4 }}>
                     <Typography variant="h5" sx={{ mb: 1, fontWeight: 700 }}>
-                      {plan.name}
+                      {plan.name === 'Starter' ? t('landing.pricing.planStarter') : plan.name === 'Pro' ? t('landing.pricing.planPro') : t('landing.pricing.planEnterprise')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 3, minHeight: 40 }}>
-                      {plan.description}
+                      {plan.name === 'Starter' ? t('landing.pricing.planStarterDesc') : plan.name === 'Pro' ? t('landing.pricing.planProDesc') : t('landing.pricing.planEnterpriseDesc')}
                     </Typography>
                     <Box sx={{ mb: 3 }}>
                       {plan.price !== null ? (
@@ -347,7 +348,7 @@ const Landing: React.FC = () => {
                         </>
                       ) : (
                         <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                          Contact us
+                          {t('landing.pricing.contactUs')}
                         </Typography>
                       )}
                     </Box>
@@ -358,7 +359,7 @@ const Landing: React.FC = () => {
                       onClick={() => navigate('/signup')}
                       sx={{ mb: 3 }}
                     >
-                      {plan.price !== null ? 'Start Free Trial' : 'Contact Sales'}
+                      {plan.price !== null ? t('landing.pricing.startFreeTrial') : t('landing.pricing.contactSales')}
                     </Button>
                     <List dense>
                       {plan.features.map((feature, featureIndex) => (
@@ -392,10 +393,10 @@ const Landing: React.FC = () => {
         <Container maxWidth="md">
           <Box sx={{ textAlign: 'center' }}>
             <Typography variant="h3" sx={{ mb: 2, fontWeight: 700, color: 'inherit' }}>
-              Ready to streamline your invoice processing?
+              {t('landing.cta.title')}
             </Typography>
             <Typography variant="h6" sx={{ mb: 4, opacity: 0.9, fontWeight: 400 }}>
-              Join 500+ companies already using InvoiceAI to save time and reduce errors.
+              {t('landing.cta.subtitle')}
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
               <Button
@@ -412,7 +413,7 @@ const Landing: React.FC = () => {
                   },
                 }}
               >
-                Start Free Trial
+                {t('landing.cta.startTrial')}
               </Button>
               <Button
                 variant="outlined"
@@ -428,7 +429,7 @@ const Landing: React.FC = () => {
                   },
                 }}
               >
-                Book Demo
+                {t('landing.cta.bookDemo')}
               </Button>
             </Box>
           </Box>

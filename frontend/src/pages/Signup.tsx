@@ -22,9 +22,11 @@ import {
   Business as BusinessIcon,
 } from '@mui/icons-material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
 
 const Signup: React.FC = () => {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [company, setCompany] = useState('');
@@ -41,22 +43,22 @@ const Signup: React.FC = () => {
     setError('');
 
     if (!name || !email || !company || !password || !confirmPassword) {
-      setError('Please fill in all fields');
+      setError(t('signup.errorFillAll'));
       return;
     }
 
     if (!email.includes('@')) {
-      setError('Please enter a valid email address');
+      setError(t('signup.errorValidEmail'));
       return;
     }
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+      setError(t('signup.errorPasswordLength'));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError(t('signup.errorPasswordMismatch'));
       return;
     }
 
@@ -66,10 +68,10 @@ const Signup: React.FC = () => {
       if (success) {
         navigate('/dashboard');
       } else {
-        setError('Signup failed. Please try again.');
+        setError(t('signup.errorSignupFailed'));
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError(t('signup.errorGeneric'));
     } finally {
       setLoading(false);
     }
@@ -116,7 +118,7 @@ const Signup: React.FC = () => {
               IV
             </Box>
             <Typography variant="h5" sx={{ fontWeight: 700, color: 'primary.main' }}>
-              InvoiceAI
+              {t('app.brand')}
             </Typography>
           </Box>
         </Box>
@@ -124,10 +126,10 @@ const Signup: React.FC = () => {
         <Card sx={{ maxWidth: 500, mx: 'auto' }}>
           <CardContent sx={{ p: 4 }}>
             <Typography variant="h4" align="center" sx={{ mb: 1, fontWeight: 700 }}>
-              Start your free trial
+              {t('signup.startFreeTrial')}
             </Typography>
             <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4 }}>
-              14 days free • No credit card required
+              {t('signup.subtitle')}
             </Typography>
 
             {error && (
@@ -139,7 +141,7 @@ const Signup: React.FC = () => {
             <Box component="form" onSubmit={handleSubmit}>
               <TextField
                 fullWidth
-                label="Full name"
+                label={t('signup.fullName')}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 sx={{ mb: 2 }}
@@ -153,7 +155,7 @@ const Signup: React.FC = () => {
               />
               <TextField
                 fullWidth
-                label="Work email"
+                label={t('signup.workEmail')}
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -168,7 +170,7 @@ const Signup: React.FC = () => {
               />
               <TextField
                 fullWidth
-                label="Company name"
+                label={t('signup.companyName')}
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
                 sx={{ mb: 2 }}
@@ -182,12 +184,12 @@ const Signup: React.FC = () => {
               />
               <TextField
                 fullWidth
-                label="Password"
+                label={t('signup.password')}
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 sx={{ mb: 2 }}
-                helperText="Must be at least 8 characters"
+                helperText={t('signup.passwordHelper')}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -209,7 +211,7 @@ const Signup: React.FC = () => {
               />
               <TextField
                 fullWidth
-                label="Confirm password"
+                label={t('signup.confirmPassword')}
                 type={showPassword ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
@@ -231,13 +233,13 @@ const Signup: React.FC = () => {
                 disabled={loading}
                 sx={{ mb: 3 }}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Create Account'}
+                {loading ? <CircularProgress size={24} color="inherit" /> : t('signup.signUp')}
               </Button>
 
               <Typography variant="body2" color="text.secondary" align="center">
-                Already have an account?{' '}
+                {t('signup.alreadyHaveAccount')}{' '}
                 <Link component={RouterLink} to="/login" sx={{ textDecoration: 'none', fontWeight: 600 }}>
-                  Sign in
+                  {t('signup.signIn')}
                 </Link>
               </Typography>
             </Box>
@@ -245,10 +247,10 @@ const Signup: React.FC = () => {
         </Card>
 
         <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 4 }}>
-          By signing up, you agree to our{' '}
-          <Link href="#" sx={{ textDecoration: 'none' }}>Terms of Service</Link>
-          {' '}and{' '}
-          <Link href="#" sx={{ textDecoration: 'none' }}>Privacy Policy</Link>
+          {t('login.agreeTerms')}{' '}
+          <Link href="#" sx={{ textDecoration: 'none' }}>{t('login.termsOfService')}</Link>
+          {' '}{t('login.and')}{' '}
+          <Link href="#" sx={{ textDecoration: 'none' }}>{t('login.privacyPolicy')}</Link>
         </Typography>
       </Container>
     </Box>

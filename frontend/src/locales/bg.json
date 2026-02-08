@@ -1,0 +1,310 @@
+{
+  "common": {
+    "save": "Запази",
+    "cancel": "Отказ",
+    "close": "Затвори",
+    "create": "Създай",
+    "rename": "Преименувай",
+    "delete": "Изтрий",
+    "edit": "Редактирай",
+    "cancelEdit": "Отказ от редакция",
+    "move": "Премести",
+    "moveHere": "Премести тук",
+    "back": "Назад"
+  },
+  "app": {
+    "title": "Фактури с AI",
+    "description": "Помагаме на счетоводителите да обработват фактури",
+    "brand": "InvoiceAI"
+  },
+  "landing": {
+    "hero": {
+      "title": "Обработка на фактури с изкуствен интелект и",
+      "titleHighlight": "одобрение от човек",
+      "subtitle": "Извличайте, проверявайте и одобрявайте фактури за минути. Нашият AI върши тежката работа, а вие запазвате пълен контрол.",
+      "startTrial": "Започнете безплатен пробен период",
+      "bookDemo": "Резервирайте демо",
+      "noCard": "Не се изисква карта • 14 дни безплатен пробен период"
+    },
+    "demo": {
+      "pdfPreview": "Преглед на PDF",
+      "supplierName": "Име на доставчика",
+      "totalAmount": "Обща сума",
+      "confidence": "98% увереност"
+    },
+    "features": {
+      "sectionTitle": "Всичко необходимо за обработка на фактури",
+      "sectionSubtitle": "От качване до одобрение – платформата ни покрива целия работен процес с подкрепа на AI.",
+      "upload": {
+        "title": "Качване на фактури",
+        "description": "Плъзнете и пуснете една или много фактури. Поддържат се PDF, изображения и сканирани документи."
+      },
+      "extraction": {
+        "title": "Извличане на данни с AI",
+        "description": "Разширени OCR и ML модели извличат ключови полета с оценка на увереността."
+      },
+      "chat": {
+        "title": "Чат с документ",
+        "description": "Задавайте въпроси за всяка фактура. AI отговаря и може да актуализира извлечените данни."
+      },
+      "audit": {
+        "title": "Одитен път",
+        "description": "Пълна история на всички промени, одобрения и чат взаимодействия."
+      }
+    },
+    "demoSection": {
+      "title": "Вижте го в действие",
+      "subtitle": "Наблюдавайте как InvoiceAI обработва документи в реално време.",
+      "clickToWatch": "Кликнете за гледане на демо видео",
+      "tryYourself": "Опитайте сами"
+    },
+    "pricing": {
+      "title": "Проста и прозрачна ценоразписна политика",
+      "subtitle": "Започнете безплатно, надградете когато сте готови. Без скрити такси.",
+      "mostPopular": "Най-популярен",
+      "contactUs": "Свържете се с нас",
+      "startFreeTrial": "Започнете безплатен пробен период",
+      "contactSales": "Свържете се с продажбите",
+      "perMonth": "месец",
+      "planStarter": "Стартер",
+      "planStarterDesc": "Идеално за малки бизнеси в началото",
+      "planPro": "Про",
+      "planProDesc": "За разрастващи се екипи с по-голям обем",
+      "planEnterprise": "Корпоративен",
+      "planEnterpriseDesc": "Персонализирани решения за големи организации"
+    },
+    "cta": {
+      "title": "Готови ли сте да опростите обработката на фактури?",
+      "subtitle": "Над 500 компании вече използват InvoiceAI, за да спестят време и да намалят грешките.",
+      "startTrial": "Започнете безплатен пробен период",
+      "bookDemo": "Резервирайте демо"
+    },
+    "footer": {
+      "tagline": "Обработка на фактури с AI с човешко одобрение. Опростете работния си процес по задължения.",
+      "product": "Продукт",
+      "company": "Компания",
+      "legal": "Правна информация",
+      "features": "Функции",
+      "pricing": "Цени",
+      "security": "Сигурност",
+      "about": "За нас",
+      "blog": "Блог",
+      "careers": "Кариери",
+      "privacyPolicy": "Политика за поверителност",
+      "termsOfService": "Общи условия",
+      "gdpr": "GDPR",
+      "copyright": "© {{year}} InvoiceAI. Всички права запазени."
+    }
+  },
+  "login": {
+    "welcomeBack": "Добре дошли отново",
+    "signInToContinue": "Влезте в акаунта си, за да продължите",
+    "emailLabel": "Имейл адрес",
+    "passwordLabel": "Парола",
+    "forgotPassword": "Забравена парола?",
+    "signIn": "Вход",
+    "noAccount": "Нямате акаунт?",
+    "signUpFree": "Регистрирайте се безплатно",
+    "agreeTerms": "Влизайки, вие приемате нашите",
+    "termsOfService": "Общи условия",
+    "and": "и",
+    "privacyPolicy": "Политика за поверителност",
+    "errorFillAll": "Моля, попълнете всички полета",
+    "errorValidEmail": "Моля, въведете валиден имейл адрес",
+    "errorInvalidCredentials": "Невалидни данни за вход",
+    "errorGeneric": "Възникна грешка. Моля, опитайте отново."
+  },
+  "signup": {
+    "createAccount": "Създайте акаунт",
+    "startFreeTrial": "Започнете безплатния си пробен период",
+    "getStarted": "Започнете безплатно за 14 дни",
+    "subtitle": "14 дни безплатно • Не се изисква карта",
+    "passwordHelper": "Поне 8 символа",
+    "fullName": "Пълно име",
+    "workEmail": "Работен имейл",
+    "companyName": "Име на компанията",
+    "password": "Парола",
+    "confirmPassword": "Потвърдете паролата",
+    "signUp": "Регистрация",
+    "alreadyHaveAccount": "Вече имате акаунт?",
+    "signIn": "Вход",
+    "errorFillAll": "Моля, попълнете всички полета",
+    "errorValidEmail": "Моля, въведете валиден имейл адрес",
+    "errorPasswordLength": "Паролата трябва да е поне 8 символа",
+    "errorPasswordMismatch": "Паролите не съвпадат",
+    "errorSignupFailed": "Регистрацията не успя. Моля, опитайте отново.",
+    "errorGeneric": "Възникна грешка. Моля, опитайте отново."
+  },
+  "layout": {
+    "public": {
+      "product": "Продукт",
+      "pricing": "Цени",
+      "demo": "Демо",
+      "goToDashboard": "Към таблото",
+      "login": "Вход",
+      "startFreeTrial": "Започнете безплатен пробен период"
+    },
+    "authenticated": {
+      "dashboard": "Табло",
+      "invoices": "Фактури",
+      "usageBilling": "Използване и фактуриране",
+      "settings": "Настройки",
+      "logout": "Изход",
+      "profile": "Профил",
+      "currentPlan": "Текущ план",
+      "proPlan": "План Pro",
+      "invoicesUsage": "{{used}} / {{limit}} фактури"
+    }
+  },
+  "dashboard": {
+    "title": "Табло",
+    "welcomeBack": "Добре дошли! Ето какво се случва с вашите фактури.",
+    "stats": {
+      "invoicesProcessed": "Обработени фактури",
+      "pendingApprovals": "Чакащи одобрения",
+      "approvedInvoices": "Одобрени фактури",
+      "subscriptionPlan": "Абонаментен план"
+    },
+    "recentActivity": "Последна активност",
+    "quickStats": "Бърза статистика",
+    "monthlyUsage": "Месечно използване",
+    "approvalRate": "Процент одобрения",
+    "avgProcessingTime": "Средно време за обработка",
+    "by": "от",
+    "justNow": "Току-що",
+    "hoursAgo": "преди {{count}}ч"
+  },
+  "invoices": {
+    "title": "Фактури",
+    "uploadInvoice": "Качи фактура",
+    "uploadInvoices": "Качване на фактури",
+    "searchPlaceholder": "Търсене на фактури...",
+    "moveSelected": "Премести избраните",
+    "deleteSelected": "Изтрий избраните",
+    "selectedCount": "{{count}} избрани",
+    "dropOrClick": "Пуснете файлове тук или кликнете за качване",
+    "supportsFiles": "Поддържат се PDF, PNG, JPG (макс. 10MB на файл)",
+    "processing": "Обработваме вашите фактури..."
+  },
+  "invoiceList": {
+    "pending": "Чакаща",
+    "needsReview": "Нужен преглед",
+    "approved": "Одобрена",
+    "noInvoicesInFolder": "В тази папка няма фактури",
+    "uploadOrMove": "Качете фактури или ги преместете тук от друга папка",
+    "subfolders": "Подпапки"
+  },
+  "folderDialogs": {
+    "createNewFolder": "Създаване на нова папка",
+    "renameFolder": "Преименуване на папка",
+    "folderName": "Име на папка",
+    "creatingIn": "Създаване на подпапка в: {{name}}",
+    "deleteFolder": "Изтриване на папка",
+    "deleteInvoice": "Изтриване на фактура",
+    "deleteConfirm": "Сигурни ли сте, че искате да изтриете \"{{name}}\"?",
+    "deleteWarning": "Внимание: Тази папка съдържа подпапки или фактури, които също ще бъдат изтрити.",
+    "moveFolder": "Преместване на папка",
+    "moveInvoice": "Преместване на фактура",
+    "selectDestination": "Изберете целева папка за \"{{name}}\""
+  },
+  "folderTree": {
+    "clients": "Клиенти",
+    "createNewClientFolder": "Създаване на нова папка за клиент"
+  },
+  "invoiceDetail": {
+    "documentPreview": "Преглед на документ",
+    "approved": "Одобрена",
+    "needsReview": "Нужен преглед",
+    "pending": "Чакаща",
+    "approveInvoice": "Одобри фактура",
+    "edit": "Редактирай",
+    "cancelEdit": "Отказ от редакция",
+    "approvedSuccess": "Фактурата е одобрена успешно!",
+    "approvedLocked": "Тази фактура е одобрена и вече е заключена за редакция.",
+    "extractedData": "Извлечени данни",
+    "chatWithDocument": "Чат с документ",
+    "supplierName": "Име на доставчика",
+    "vatNumber": "ДДС номер",
+    "invoiceNumber": "Номер на фактура",
+    "invoiceDate": "Дата на фактура",
+    "currency": "Валута",
+    "netAmount": "Нетна сума",
+    "vatAmount": "ДДС сума",
+    "totalAmount": "Обща сума",
+    "total": "Общо:",
+    "confidenceHigh": "Висока",
+    "confidenceMedium": "Средна",
+    "confidenceLow": "Ниска",
+    "confidencePct": "{{pct}}% увереност",
+    "chatPlaceholder": "Задайте въпрос за тази фактура...",
+    "askQuestions": "Задавайте въпроси за тази фактура",
+    "chatHelp": "Мога да помогна с проверка на суми, изчисления или възможни проблеми.",
+    "suggestedVat": "Каква е ДДС сумата?",
+    "suggestedCheck": "Проверете дали сумите са правилни",
+    "suggestedMissing": "Има ли липсващи полета?"
+  },
+  "settings": {
+    "title": "Настройки",
+    "subtitle": "Управление на организацията и предпочитанията",
+    "organization": "Организация",
+    "users": "Потребители",
+    "preferences": "Предпочитания",
+    "organizationDetails": "Данни за организацията",
+    "organizationName": "Име на организацията",
+    "businessAddress": "Бизнес адрес",
+    "vatNumber": "ДДС номер",
+    "billingEmail": "Имейл за фактуриране",
+    "saveChanges": "Запази промените",
+    "teamMembers": "Членове на екипа",
+    "inviteUser": "Покани потребител",
+    "user": "Потребител",
+    "role": "Роля",
+    "status": "Статус",
+    "actions": "Действия",
+    "you": "Вие",
+    "admin": "Администратор",
+    "userRole": "Потребител",
+    "active": "Активен",
+    "notificationPreferences": "Предпочитания за известия",
+    "emailNotifications": "Имейл известия",
+    "emailNotificationsDesc": "Получавайте известия за нови фактури и одобрения",
+    "weeklySummaryReport": "Седмичен обобщен отчет",
+    "weeklyReportDesc": "Получавайте седмичен обзор на обработените фактури и активността",
+    "processingPreferences": "Предпочитания за обработка",
+    "autoApproveHighConfidence": "Автоодобрение при висока увереност",
+    "autoApproveDesc": "Автоматично одобряване на фактури с оценка на увереност 95%+",
+    "savePreferences": "Запази предпочитанията",
+    "inviteTeamMember": "Покани член на екипа",
+    "emailAddress": "Имейл адрес",
+    "emailPlaceholder": "колега@фирма.com",
+    "sendInvite": "Изпрати покана"
+  },
+  "usageBilling": {
+    "title": "Използване и фактуриране",
+    "subtitle": "Наблюдавайте използването и управлявайте абонамента",
+    "currentPlan": "Текущ план",
+    "active": "Активен",
+    "documentsProcessed": "Обработени документи този месец",
+    "documentsRemaining": "оставащи документа",
+    "monthlyPrice": "Месечна цена",
+    "billingCycle": "Бilling цикъл",
+    "nextBillingDate": "Следваща дата на фактуриране",
+    "availablePlans": "Налични планове",
+    "billingHistory": "История на фактуриране",
+    "viewAllInvoices": "Виж всички фактури",
+    "paymentMethod": "Метод на плащане",
+    "updatePaymentMethod": "Актуализирай метод на плащане",
+    "current": "Текущ",
+    "paid": "Платено",
+    "currentPlanLabel": "Текущ план",
+    "contactSales": "Свържете се с продажбите",
+    "downgrade": "Намаляване",
+    "upgrade": "Надграждане",
+    "custom": "По поръчка"
+  },
+  "notFound": {
+    "title": "404",
+    "message": "Опа! Страницата не е намерена",
+    "returnHome": "Обратно към началото"
+  }
+}

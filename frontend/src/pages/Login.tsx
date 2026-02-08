@@ -20,9 +20,11 @@ import {
   Lock as LockIcon,
 } from '@mui/icons-material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
 
 const Login: React.FC = () => {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -36,17 +38,14 @@ const Login: React.FC = () => {
     setError('');
 
     if (!email || !password) {
-      setError('Please fill in all fields');
+      setError(t('login.errorFillAll'));
       return;
     }
 
-    // TODO: add valid regex for emails
     if (!email.includes('@')) {
-      setError('Please enter a valid email address');
+      setError(t('login.errorValidEmail'));
       return;
     }
-
-    // TODO: add password validation as well - 6 chars, lower/upper case letter, symbol
 
     setLoading(true);
     try {
@@ -54,10 +53,10 @@ const Login: React.FC = () => {
       if (success) {
         navigate('/dashboard');
       } else {
-        setError('Invalid credentials');
+        setError(t('login.errorInvalidCredentials'));
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError(t('login.errorGeneric'));
     } finally {
       setLoading(false);
     }
@@ -104,7 +103,7 @@ const Login: React.FC = () => {
               IV
             </Box>
             <Typography variant="h5" sx={{ fontWeight: 700, color: 'primary.main' }}>
-              InvoiceAI
+              {t('app.brand')}
             </Typography>
           </Box>
         </Box>
@@ -112,10 +111,10 @@ const Login: React.FC = () => {
         <Card sx={{ maxWidth: 460, mx: 'auto' }}>
           <CardContent sx={{ p: 4 }}>
             <Typography variant="h4" align="center" sx={{ mb: 1, fontWeight: 700 }}>
-              Welcome back
+              {t('login.welcomeBack')}
             </Typography>
             <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4 }}>
-              Sign in to your account to continue
+              {t('login.signInToContinue')}
             </Typography>
 
             {error && (
@@ -127,7 +126,7 @@ const Login: React.FC = () => {
             <Box component="form" onSubmit={handleSubmit}>
               <TextField
                 fullWidth
-                label="Email address"
+                label={t('login.emailLabel')}
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -142,7 +141,7 @@ const Login: React.FC = () => {
               />
               <TextField
                 fullWidth
-                label="Password"
+                label={t('login.passwordLabel')}
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -174,7 +173,7 @@ const Login: React.FC = () => {
                   variant="body2"
                   sx={{ textDecoration: 'none' }}
                 >
-                  Forgot password?
+                  {t('login.forgotPassword')}
                 </Link>
               </Box>
 
@@ -186,13 +185,13 @@ const Login: React.FC = () => {
                 disabled={loading}
                 sx={{ mb: 3 }}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
+                {loading ? <CircularProgress size={24} color="inherit" /> : t('login.signIn')}
               </Button>
 
               <Typography variant="body2" color="text.secondary" align="center">
-                Don't have an account?{' '}
+                {t('login.noAccount')}{' '}
                 <Link component={RouterLink} to="/signup" sx={{ textDecoration: 'none', fontWeight: 600 }}>
-                  Sign up for free
+                  {t('login.signUpFree')}
                 </Link>
               </Typography>
             </Box>
@@ -200,10 +199,10 @@ const Login: React.FC = () => {
         </Card>
 
         <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 4 }}>
-          By signing in, you agree to our{' '}
-          <Link href="#" sx={{ textDecoration: 'none' }}>Terms of Service</Link>
-          {' '}and{' '}
-          <Link href="#" sx={{ textDecoration: 'none' }}>Privacy Policy</Link>
+          {t('login.agreeTerms')}{' '}
+          <Link href="#" sx={{ textDecoration: 'none' }}>{t('login.termsOfService')}</Link>
+          {' '}{t('login.and')}{' '}
+          <Link href="#" sx={{ textDecoration: 'none' }}>{t('login.privacyPolicy')}</Link>
         </Typography>
       </Container>
     </Box>

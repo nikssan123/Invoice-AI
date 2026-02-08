@@ -8,6 +8,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id                   String    @id @default(uuid())
+  email                String    @unique
+  passwordHash         String
+  name                 String?
+  createdAt            DateTime  @default(now())
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+  invoices             Invoice[]
+}
+
 model Invoice {
   id        String         @id @default(uuid())
   filename  String
@@ -15,10 +26,13 @@ model Invoice {
   mimeType  String
   status    String         @default("pending") // pending | approved | needs_review
   createdAt DateTime       @default(now())
+  userId    String?
+  user      User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   fields    InvoiceFields?
   approvals Approval[]
 
   @@index([status])
+  @@index([userId])
 }
 
 model InvoiceFields {

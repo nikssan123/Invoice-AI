@@ -22,14 +22,16 @@ import {
   Upload as UploadIcon,
   Chat as ChatIcon,
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import { mockDashboardStats, mockRecentActivity } from '@/data/mockData';
 
 const Dashboard: React.FC = () => {
+  const { t } = useTranslation();
   const stats = [
-    { title: 'Invoices Processed', value: mockDashboardStats.invoicesProcessed, icon: <ReceiptIcon />, color: '#1565C0', bgColor: '#E3F2FD' },
-    { title: 'Pending Approvals', value: mockDashboardStats.pendingApprovals, icon: <PendingIcon />, color: '#F57C00', bgColor: '#FFF3E0' },
-    { title: 'Approved Invoices', value: mockDashboardStats.approvedInvoices, icon: <ApprovedIcon />, color: '#2E7D32', bgColor: '#E8F5E9' },
-    { title: 'Subscription Plan', value: mockDashboardStats.subscriptionPlan, icon: <PlanIcon />, color: '#7B1FA2', bgColor: '#F3E5F5' },
+    { title: t('dashboard.stats.invoicesProcessed'), value: mockDashboardStats.invoicesProcessed, icon: <ReceiptIcon />, color: '#1565C0', bgColor: '#E3F2FD' },
+    { title: t('dashboard.stats.pendingApprovals'), value: mockDashboardStats.pendingApprovals, icon: <PendingIcon />, color: '#F57C00', bgColor: '#FFF3E0' },
+    { title: t('dashboard.stats.approvedInvoices'), value: mockDashboardStats.approvedInvoices, icon: <ApprovedIcon />, color: '#2E7D32', bgColor: '#E8F5E9' },
+    { title: t('dashboard.stats.subscriptionPlan'), value: mockDashboardStats.subscriptionPlan, icon: <PlanIcon />, color: '#7B1FA2', bgColor: '#F3E5F5' },
   ];
 
   const getActivityIcon = (action: string) => {
@@ -51,16 +53,16 @@ const Dashboard: React.FC = () => {
     const date = new Date(timestamp);
     const now = new Date();
     const diffHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffHours < 1) return t('dashboard.justNow');
+    if (diffHours < 24) return t('dashboard.hoursAgo', { count: diffHours });
     return date.toLocaleDateString();
   };
 
   return (
     <Box>
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>Dashboard</Typography>
-        <Typography variant="body1" color="text.secondary">Welcome back! Here's what's happening with your invoices.</Typography>
+        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>{t('dashboard.title')}</Typography>
+        <Typography variant="body1" color="text.secondary">{t('dashboard.welcomeBack')}</Typography>
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -87,7 +89,7 @@ const Dashboard: React.FC = () => {
         <Grid size={{ xs: 12, lg: 8 }}>
           <Card>
             <CardContent>
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>Recent Activity</Typography>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>{t('dashboard.recentActivity')}</Typography>
               <List sx={{ p: 0 }}>
                 {mockRecentActivity.map((activity, index) => (
                   <ListItem key={activity.id} sx={{ px: 0, borderBottom: index < mockRecentActivity.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
@@ -95,7 +97,7 @@ const Dashboard: React.FC = () => {
                       <Avatar sx={{ bgcolor: 'grey.100', color: getActivityColor(activity.action) }}>{getActivityIcon(activity.action)}</Avatar>
                     </ListItemAvatar>
                     <ListItemText
-                      primary={<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Typography variant="subtitle2">{activity.action}</Typography><Typography variant="caption" color="text.secondary">by {activity.user}</Typography></Box>}
+                      primary={<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Typography variant="subtitle2">{activity.action}</Typography><Typography variant="caption" color="text.secondary">{t('dashboard.by')} {activity.user}</Typography></Box>}
                       secondary={activity.description}
                     />
                     <Typography variant="caption" color="text.secondary">{formatTime(activity.timestamp)}</Typography>
@@ -109,10 +111,10 @@ const Dashboard: React.FC = () => {
         <Grid size={{ xs: 12, lg: 4 }}>
           <Card>
             <CardContent>
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>Quick Stats</Typography>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>{t('dashboard.quickStats')}</Typography>
               <Box sx={{ mb: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">Monthly Usage</Typography>
+                  <Typography variant="body2" color="text.secondary">{t('dashboard.monthlyUsage')}</Typography>
                   <Typography variant="body2" fontWeight={600}>247 / 500</Typography>
                 </Box>
                 <Box sx={{ height: 8, bgcolor: 'grey.200', borderRadius: 4, overflow: 'hidden' }}>
@@ -120,14 +122,14 @@ const Dashboard: React.FC = () => {
                 </Box>
               </Box>
               <Box sx={{ mb: 3 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Approval Rate</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('dashboard.approvalRate')}</Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="h5" fontWeight={700} color="success.main">95.1%</Typography>
                   <Chip label="+2.3%" color="success" size="small" />
                 </Box>
               </Box>
               <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Average Processing Time</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('dashboard.avgProcessingTime')}</Typography>
                 <Typography variant="h5" fontWeight={700}>2.3 min</Typography>
               </Box>
             </CardContent>

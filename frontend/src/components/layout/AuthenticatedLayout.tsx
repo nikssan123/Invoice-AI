@@ -29,19 +29,14 @@ import {
   ChevronLeft as ChevronLeftIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
 
 const DRAWER_WIDTH = 260;
 const COLLAPSED_WIDTH = 72;
 
-const menuItems = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
-  { text: 'Invoices', icon: <InvoicesIcon />, path: '/invoices' },
-  { text: 'Usage & Billing', icon: <UsageIcon />, path: '/usage' },
-  { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
-];
-
 const AuthenticatedLayout: React.FC = () => {
+  const { t } = useTranslation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -50,6 +45,13 @@ const AuthenticatedLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+
+  const menuItems = [
+    { text: t('layout.authenticated.dashboard'), icon: <DashboardIcon />, path: '/dashboard' },
+    { text: t('layout.authenticated.invoices'), icon: <InvoicesIcon />, path: '/invoices' },
+    { text: t('layout.authenticated.usageBilling'), icon: <UsageIcon />, path: '/usage' },
+    { text: t('layout.authenticated.settings'), icon: <SettingsIcon />, path: '/settings' },
+  ];
 
   const handleDrawerToggle = () => {
     if (isMobile) {
@@ -108,12 +110,12 @@ const AuthenticatedLayout: React.FC = () => {
                 color: 'white',
                 fontSize: '0.75rem',
                 fontWeight: 700,
-              }}
-            >
-              IV
-            </Box>
-            InvoiceAI
-          </Typography>
+            }}
+          >
+            IV
+          </Box>
+          {t('app.brand')}
+        </Typography>
         )}
         {!isMobile && (
           <IconButton onClick={handleDrawerToggle} size="small">
@@ -185,13 +187,13 @@ const AuthenticatedLayout: React.FC = () => {
             borderColor: 'divider',
           }}>
             <Typography variant="caption" color="text.secondary" display="block">
-              Current Plan
+              {t('layout.authenticated.currentPlan')}
             </Typography>
             <Typography variant="subtitle2" fontWeight={600}>
-              Pro Plan
+              {t('layout.authenticated.proPlan')}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              247 / 500 invoices
+              {t('layout.authenticated.invoicesUsage', { used: 247, limit: 500 })}
             </Typography>
           </Box>
         )}
@@ -269,20 +271,20 @@ const AuthenticatedLayout: React.FC = () => {
               <ListItemIcon>
                 <PersonIcon fontSize="small" />
               </ListItemIcon>
-              Profile
+              {t('layout.authenticated.profile')}
             </MenuItem>
             <MenuItem onClick={() => navigate('/settings')}>
               <ListItemIcon>
                 <SettingsIcon fontSize="small" />
               </ListItemIcon>
-              Settings
+              {t('layout.authenticated.settings')}
             </MenuItem>
             <Divider />
             <MenuItem onClick={handleLogout}>
               <ListItemIcon>
                 <LogoutIcon fontSize="small" />
               </ListItemIcon>
-              Logout
+              {t('layout.authenticated.logout')}
             </MenuItem>
           </Menu>
         </Toolbar>
