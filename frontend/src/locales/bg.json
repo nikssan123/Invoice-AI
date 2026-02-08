@@ -135,6 +135,39 @@
     "errorSignupFailed": "Регистрацията не успя. Моля, опитайте отново.",
     "errorGeneric": "Възникна грешка. Моля, опитайте отново."
   },
+  "forgotPassword": {
+    "title": "Забравена парола",
+    "subtitle": "Въведете имейла си и ще ви изпратим линк за възстановяване.",
+    "emailLabel": "Имейл адрес",
+    "submit": "Изпрати линк",
+    "success": "Ако има акаунт с този имейл, ще получите имейл с инструкции.",
+    "backToLogin": "Обратно към входа"
+  },
+  "acceptInvite": {
+    "title": "Приемане на покана",
+    "subtitle": "Задайте парола и име, за да се присъедините към организацията.",
+    "nameLabel": "Име (по избор)",
+    "namePlaceholder": "Вашето име",
+    "passwordLabel": "Парола",
+    "confirmPasswordLabel": "Потвърдете паролата",
+    "submit": "Приеми покана и влез",
+    "backToLogin": "Към вход",
+    "errorTokenRequired": "Липсва линк за покана.",
+    "errorPasswordLength": "Паролата трябва да е поне 8 символа.",
+    "errorPasswordMismatch": "Паролите не съвпадат.",
+    "errorGeneric": "Неуспешно приемане на покана. Линкът може да е изтекъл."
+  },
+  "resetPassword": {
+    "title": "Нова парола",
+    "subtitle": "Въведете новата си парола.",
+    "passwordLabel": "Нова парола",
+    "confirmPasswordLabel": "Потвърдете паролата",
+    "submit": "Запази паролата",
+    "success": "Паролата е сменена. Можете да влезете.",
+    "backToLogin": "Към вход",
+    "errorTokenRequired": "Липсва линк за възстановяване.",
+    "errorPasswordMismatch": "Паролите не съвпадат."
+  },
   "layout": {
     "public": {
       "product": "Продукт",
@@ -277,7 +310,12 @@
     "inviteTeamMember": "Покани член на екипа",
     "emailAddress": "Имейл адрес",
     "emailPlaceholder": "колега@фирма.com",
-    "sendInvite": "Изпрати покана"
+    "sendInvite": "Изпрати покана",
+    "pendingInvitations": "Чакащи покани",
+    "invitedBy": "Поканен от",
+    "expiresAt": "Изтича на",
+    "inviteErrorGeneric": "Неуспешно изпращане на покана.",
+    "inviteSuccess": "Поканата е изпратена."
   },
   "usageBilling": {
     "title": "Използване и фактуриране",

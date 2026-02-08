@@ -5,6 +5,7 @@ import { config } from "./config.js";
 import { requireAuth } from "./middleware/auth.js";
 import authRoutes from "./routes/auth.js";
 import invoiceRoutes from "./routes/invoices.js";
+import organizationRoutes from "./routes/organizations.js";
 import { swaggerSpec } from "./swagger.js";
 
 const app = express();
@@ -14,6 +15,7 @@ app.use(express.json());
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use("/api/auth", authRoutes);
 app.use("/api/invoices", requireAuth, invoiceRoutes);
+app.use("/api/organizations", requireAuth, organizationRoutes);
 
 /**
  * @openapi

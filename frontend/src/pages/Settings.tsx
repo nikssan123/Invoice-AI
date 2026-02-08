@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -24,6 +24,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Alert,
+  CircularProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -34,6 +36,17 @@ import {
 import { useTranslation } from 'react-i18next';
 import { mockUsers } from '@/data/mockData';
 import { useAuth } from '@/context/AuthContext';
+import { apiClient } from '@/api/client';
+
+interface Invitation {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+  invitedBy: { name: string | null; email: string };
+}
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -53,6 +66,28 @@ const Settings: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteError, setInviteError] = useState('');
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [invitationsLoading, setInvitationsLoading] = useState(false);
+
+  const isAdmin = user?.role === 'admin';
+
+  const fetchInvitations = useCallback(async () => {
+    setInvitationsLoading(true);
+    try {
+      const res = await apiClient.get<Invitation[]>('/api/organizations/invitations');
+      setInvitations(res.data);
+    } catch {
+      setInvitations([]);
+    } finally {
+      setInvitationsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tabValue === 1) fetchInvitations();
+  }, [tabValue, fetchInvitations]);
 
   // Organization settings
   const [orgName, setOrgName] = useState('Acme Corp');
@@ -63,10 +98,22 @@ const Settings: React.FC = () => {
   const [weeklyReport, setWeeklyReport] = useState(true);
   const [autoApprove, setAutoApprove] = useState(false);
 
-  const handleInviteUser = () => {
-    // Simulate invite
-    setInviteDialogOpen(false);
-    setInviteEmail('');
+  const handleInviteUser = async () => {
+    setInviteError('');
+    const email = inviteEmail.trim();
+    if (!email || !email.includes('@')) return;
+    setInviteLoading(true);
+    try {
+      await apiClient.post('/api/organizations/invitations', { email });
+      setInviteDialogOpen(false);
+      setInviteEmail('');
+      await fetchInvitations();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status: number; data?: { error?: string } } };
+      setInviteError(axiosErr.response?.data?.error ?? t('settings.inviteErrorGeneric'));
+    } finally {
+      setInviteLoading(false);
+    }
   };
 
   return (
@@ -140,15 +187,74 @@ const Settings: React.FC = () => {
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
                 {t('settings.teamMembers')}
               </Typography>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => setInviteDialogOpen(true)}
-              >
-                {t('settings.inviteUser')}
-              </Button>
+              {isAdmin && (
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => { setInviteError(''); setInviteDialogOpen(true); }}
+                >
+                  {t('settings.inviteUser')}
+                </Button>
+              )}
             </Box>
 
+            {invitations.length > 0 && (
+              <>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  {t('settings.pendingInvitations')}
+                </Typography>
+                <TableContainer sx={{ mb: 3 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>{t('settings.emailAddress')}</TableCell>
+                        <TableCell>{t('settings.role')}</TableCell>
+                        <TableCell>{t('settings.status')}</TableCell>
+                        <TableCell>{t('settings.invitedBy')}</TableCell>
+                        <TableCell>{t('settings.expiresAt')}</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {invitationsLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                            <CircularProgress size={24} />
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        invitations.map((inv) => (
+                          <TableRow key={inv.id}>
+                            <TableCell>{inv.email}</TableCell>
+                            <TableCell>
+                              <Chip
+                                label={inv.role === 'admin' ? t('settings.admin') : t('settings.userRole')}
+                                size="small"
+                                variant="outlined"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={inv.status}
+                                size="small"
+                                color={inv.status === 'pending' ? 'warning' : 'default'}
+                                variant="outlined"
+                              />
+                            </TableCell>
+                            <TableCell>{inv.invitedBy?.name ?? inv.invitedBy?.email ?? '—'}</TableCell>
+                            <TableCell>{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <Divider sx={{ my: 2 }} />
+              </>
+            )}
+
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+              {t('settings.teamMembers')}
+            </Typography>
             <TableContainer>
               <Table>
                 <TableHead>
@@ -283,12 +389,17 @@ const Settings: React.FC = () => {
       {/* Invite User Dialog */}
       <Dialog
         open={inviteDialogOpen}
-        onClose={() => setInviteDialogOpen(false)}
+        onClose={() => { setInviteDialogOpen(false); setInviteError(''); }}
         maxWidth="sm"
         fullWidth
       >
         <DialogTitle>{t('settings.inviteTeamMember')}</DialogTitle>
         <DialogContent>
+          {inviteError && (
+            <Alert severity="error" sx={{ mt: 2, mb: 1 }} onClose={() => setInviteError('')}>
+              {inviteError}
+            </Alert>
+          )}
           <TextField
             fullWidth
             label={t('settings.emailAddress')}
@@ -304,9 +415,9 @@ const Settings: React.FC = () => {
           <Button
             variant="contained"
             onClick={handleInviteUser}
-            disabled={!inviteEmail.includes('@')}
+            disabled={!inviteEmail.trim().includes('@') || inviteLoading}
           >
-            {t('settings.sendInvite')}
+            {inviteLoading ? <CircularProgress size={24} color="inherit" /> : t('settings.sendInvite')}
           </Button>
         </DialogActions>
       </Dialog>

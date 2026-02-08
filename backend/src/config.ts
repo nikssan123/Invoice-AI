@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config( { path: ".env" });
+
 export interface Config {
   port: number;
   uploadDir: string;
@@ -10,6 +13,7 @@ export interface Config {
   smtpClientSecret: string;
   smtpRefreshToken: string;
   appUrl: string;
+  emailFrom?: string;
 }
 
 export const config: Config = {
@@ -23,5 +27,6 @@ export const config: Config = {
   smtpClientId: process.env.SMTP_CLIENT_ID ?? "",
   smtpClientSecret: process.env.SMTP_CLIENT_SECRET ?? "",
   smtpRefreshToken: process.env.SMTP_REFRESH_TOKEN ?? "",
-  appUrl: process.env.APP_URL ?? "http://localhost:5173",
+  appUrl: process.env.APP_URL ?? "http://localhost:4173",
+  emailFrom: process.env.EMAIL_FROM,
 };

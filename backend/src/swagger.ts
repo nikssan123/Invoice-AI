@@ -27,6 +27,7 @@ const options = {
   apis: [
     path.join(__dirname, "routes", "auth" + ext),
     path.join(__dirname, "routes", "invoices" + ext),
+    path.join(__dirname, "routes", "organizations" + ext),
     path.join(__dirname, "index" + ext),
   ],
 };

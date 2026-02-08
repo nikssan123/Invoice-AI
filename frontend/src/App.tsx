@@ -9,6 +9,9 @@ import ProtectedRoute from './components/layout/ProtectedRoute';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import AcceptInvite from './pages/AcceptInvite';
 import Dashboard from './pages/Dashboard';
 import Invoices from './pages/Invoices';
 import InvoiceDetail from './pages/InvoiceDetail';
@@ -29,7 +32,10 @@ const App = () => (
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
-            
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/accept-invite" element={<AcceptInvite />} />
+
             {/* Protected Routes */}
             <Route
               element={

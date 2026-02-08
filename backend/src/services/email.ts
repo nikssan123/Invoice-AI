@@ -55,11 +55,11 @@ export async function sendPasswordResetEmail(to: string, resetToken: string): Pr
     return;
   }
 
-  const resetUrl = `${config.appUrl.replace(/\/$/, "")}/auth/reset-password?token=${encodeURIComponent(resetToken)}`;
+  const resetUrl = `${config.appUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(resetToken)}`;
 
   try {
     await transporter.sendMail({
-      from: config.emailFrom,
+      from: config.emailFrom ?? config.smtpUser,
       to,
       subject: "Password reset request",
       text: `You requested a password reset. Click the link to set a new password:\n\n${resetUrl}\n\nThis link expires in 1 hour. If you didn't request this, you can ignore this email.`,
@@ -67,5 +67,33 @@ export async function sendPasswordResetEmail(to: string, resetToken: string): Pr
     });
   } catch (err) {
     console.error("Failed to send password reset email:", err);
+  }
+}
+
+export async function sendInvitationEmail(
+  to: string,
+  organizationName: string,
+  inviterName: string,
+  acceptUrl: string
+): Promise<void> {
+  const transporter = getTransporter();
+
+  if (!transporter) {
+    console.warn("Email not configured (SMTP_* env vars missing). Skipping invitation email.");
+    return;
+  }
+
+  const from = config.emailFrom ?? config.smtpUser;
+
+  try {
+    await transporter.sendMail({
+      from,
+      to,
+      subject: `You're invited to join ${organizationName}`,
+      text: `Hi,\n\n${inviterName} invited you to join ${organizationName}. Click the link to accept and create your account:\n\n${acceptUrl}\n\nIf you didn't expect this, you can ignore this email.`,
+      html: `<p>Hi,</p><p>${inviterName} invited you to join <strong>${organizationName}</strong>. <a href="${acceptUrl}">Click here to accept and create your account</a>.</p><p>If you didn't expect this, you can ignore this email.</p>`,
+    });
+  } catch (err) {
+    console.error("Failed to send invitation email:", err);
   }
 }

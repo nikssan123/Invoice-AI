@@ -168,8 +168,8 @@ const Login: React.FC = () => {
 
               <Box sx={{ textAlign: 'right', mb: 3 }}>
                 <Link
-                  component="button"
-                  type="button"
+                  component={RouterLink}
+                  to="/forgot-password"
                   variant="body2"
                   sx={{ textDecoration: 'none' }}
                 >

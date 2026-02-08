@@ -238,7 +238,7 @@ const AuthenticatedLayout: React.FC = () => {
                 {user?.name || 'User'}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {user?.company || 'Company'}
+                {user?.email ?? ''}
               </Typography>
             </Box>
             <IconButton onClick={handleMenuOpen} size="small">
@@ -250,7 +250,7 @@ const AuthenticatedLayout: React.FC = () => {
                   fontSize: '1rem',
                 }}
               >
-                {user?.name?.charAt(0) || 'U'}
+                {user?.name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'U'}
               </Avatar>
             </IconButton>
           </Box>

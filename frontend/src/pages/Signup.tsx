@@ -64,13 +64,13 @@ const Signup: React.FC = () => {
 
     setLoading(true);
     try {
-      const success = await signup(name, email, password, company);
-      if (success) {
+      const result = await signup(name, email, password, company);
+      if (result.success) {
         navigate('/dashboard');
       } else {
-        setError(t('signup.errorSignupFailed'));
+        setError('error' in result ? result.error : t('signup.errorSignupFailed'));
       }
-    } catch (err) {
+    } catch {
       setError(t('signup.errorGeneric'));
     } finally {
       setLoading(false);

@@ -8,10 +8,16 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, authLoading } = useAuth();
 
-  // For now, we'll just check if authenticated
-  // In a real app, you'd also check for loading state
+  if (authLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }

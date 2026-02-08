@@ -10,8 +10,18 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
   const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as { userId: string; email: string };
-    req.user = { id: payload.userId, email: payload.email };
+    const payload = jwt.verify(token, config.jwtSecret) as {
+      userId: string;
+      email: string;
+      role?: string;
+      organizationId?: string;
+    };
+    req.user = {
+      id: payload.userId,
+      email: payload.email,
+      role: payload.role ?? "member",
+      organizationId: payload.organizationId ?? "",
+    };
     next();
   } catch {
     res.status(401).json({ error: "Unauthorized" });
