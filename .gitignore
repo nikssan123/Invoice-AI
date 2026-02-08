@@ -6,3 +6,8 @@ node_modules/
 backend/uploads/
 .cursor
 dist/
+
+# ocr-service venv
+ocr-service/Lib/
+ocr-service/Scripts/
+ocr-service/app/_pycache_/
