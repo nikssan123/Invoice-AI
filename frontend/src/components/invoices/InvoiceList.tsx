@@ -93,11 +93,20 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
     });
   };
 
-  const formatCurrency = (amount: number, currency: string) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency,
-    }).format(amount);
+  const formatCurrency = (amount?: number | null, currency?: string | null) => {
+    if (amount == null) return '';
+
+    const safeCurrency = (currency && currency.trim()) || 'EUR';
+
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: safeCurrency,
+      }).format(amount);
+    } catch {
+      // Fallback in case the currency code is still invalid for any reason
+      return amount.toFixed(2);
+    }
   };
 
   const allSelected = invoices.length > 0 && invoices.every((inv) => selectedInvoices.has(inv.id));

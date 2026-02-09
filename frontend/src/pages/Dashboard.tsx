@@ -1,15 +1,18 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Typography,
   Card,
   CardContent,
-  List,
-  ListItem,
-  ListItemAvatar,
-  ListItemText,
-  Avatar,
   Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Avatar,
+  Alert,
+  CircularProgress,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
@@ -20,13 +23,59 @@ import {
   Description as DocIcon,
   Edit as EditIcon,
   Upload as UploadIcon,
-  Chat as ChatIcon,
+  Folder as FolderIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
-import { mockDashboardStats, mockRecentActivity } from '@/data/mockData';
+import { mockDashboardStats } from '@/data/mockData';
+import { apiClient } from '@/api/client';
+
+export interface ActivityRow {
+  id: string;
+  organizationId: string;
+  userId: string;
+  userName: string | null;
+  actionType: string;
+  entityType: string;
+  entityId: string;
+  entityName: string | null;
+  metadata: Record<string, unknown> | null;
+  timestamp: string;
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  INVOICE_UPLOADED: 'Invoice uploaded',
+  INVOICE_APPROVED: 'Invoice approved',
+  INVOICE_MOVED: 'Invoice moved',
+  INVOICE_DELETED: 'Invoice deleted',
+  FOLDER_CREATED: 'Folder created',
+  FOLDER_RENAMED: 'Folder renamed',
+  FOLDER_DELETED: 'Folder deleted',
+};
 
 const Dashboard: React.FC = () => {
   const { t } = useTranslation();
+  const [activities, setActivities] = useState<ActivityRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await apiClient.get<ActivityRow[]>('/api/activities', { params: { limit: 20 } });
+        if (!cancelled) setActivities(res.data ?? []);
+      } catch (e: unknown) {
+        if (!cancelled) setError((e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ?? (e as Error).message ?? 'Failed to load');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const stats = [
     { title: t('dashboard.stats.invoicesProcessed'), value: mockDashboardStats.invoicesProcessed, icon: <ReceiptIcon />, color: '#1565C0', bgColor: '#E3F2FD' },
     { title: t('dashboard.stats.pendingApprovals'), value: mockDashboardStats.pendingApprovals, icon: <PendingIcon />, color: '#F57C00', bgColor: '#FFF3E0' },
@@ -34,18 +83,20 @@ const Dashboard: React.FC = () => {
     { title: t('dashboard.stats.subscriptionPlan'), value: mockDashboardStats.subscriptionPlan, icon: <PlanIcon />, color: '#7B1FA2', bgColor: '#F3E5F5' },
   ];
 
-  const getActivityIcon = (action: string) => {
-    if (action.includes('uploaded')) return <UploadIcon />;
-    if (action.includes('approved')) return <ApprovedIcon />;
-    if (action.includes('updated')) return <EditIcon />;
-    if (action.includes('Chat')) return <ChatIcon />;
+  const getActivityIcon = (actionType: string) => {
+    if (actionType.includes('DELETED')) return <DeleteIcon />;
+    if (actionType.includes('UPLOADED')) return <UploadIcon />;
+    if (actionType.includes('APPROVED')) return <ApprovedIcon />;
+    if (actionType.includes('RENAMED') || actionType.includes('MOVED')) return <EditIcon />;
+    if (actionType.includes('FOLDER')) return <FolderIcon />;
     return <DocIcon />;
   };
 
-  const getActivityColor = (action: string) => {
-    if (action.includes('uploaded')) return 'primary.main';
-    if (action.includes('approved')) return 'success.main';
-    if (action.includes('updated')) return 'warning.main';
+  const getActivityColor = (actionType: string) => {
+    if (actionType.includes('DELETED')) return 'error.main';
+    if (actionType.includes('UPLOADED')) return 'primary.main';
+    if (actionType.includes('APPROVED')) return 'success.main';
+    if (actionType.includes('RENAMED') || actionType.includes('MOVED')) return 'warning.main';
     return 'grey.600';
   };
 
@@ -57,6 +108,9 @@ const Dashboard: React.FC = () => {
     if (diffHours < 24) return t('dashboard.hoursAgo', { count: diffHours });
     return date.toLocaleDateString();
   };
+
+  const actionLabel = (actionType: string) => ACTION_LABELS[actionType] ?? actionType;
+  const displayUser = (a: ActivityRow) => a.userName?.trim() || a.userId || '—';
 
   return (
     <Box>
@@ -90,20 +144,57 @@ const Dashboard: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>{t('dashboard.recentActivity')}</Typography>
-              <List sx={{ p: 0 }}>
-                {mockRecentActivity.map((activity, index) => (
-                  <ListItem key={activity.id} sx={{ px: 0, borderBottom: index < mockRecentActivity.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
-                    <ListItemAvatar>
-                      <Avatar sx={{ bgcolor: 'grey.100', color: getActivityColor(activity.action) }}>{getActivityIcon(activity.action)}</Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Typography variant="subtitle2">{activity.action}</Typography><Typography variant="caption" color="text.secondary">{t('dashboard.by')} {activity.user}</Typography></Box>}
-                      secondary={activity.description}
-                    />
-                    <Typography variant="caption" color="text.secondary">{formatTime(activity.timestamp)}</Typography>
-                  </ListItem>
-                ))}
-              </List>
+              {error && (
+                <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+                  {t('dashboard.errorLoadingActivity')}
+                </Alert>
+              )}
+              {loading ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 3 }}>
+                  <CircularProgress size={24} />
+                  <Typography variant="body2" color="text.secondary">{t('dashboard.loadingActivity')}</Typography>
+                </Box>
+              ) : activities.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>{t('dashboard.noRecentActivity')}</Typography>
+              ) : (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('dashboard.action')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('dashboard.entity')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('dashboard.user')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }} align="right">{t('dashboard.time')}</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {activities.map((activity) => (
+                      <TableRow key={activity.id}>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Avatar sx={{ width: 28, height: 28, bgcolor: 'grey.100', color: getActivityColor(activity.actionType) }}>
+                              {getActivityIcon(activity.actionType)}
+                            </Avatar>
+                            <Typography variant="body2">{actionLabel(activity.actionType)}</Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary">
+                            {activity.entityName ?? activity.entityId ?? '—'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{displayUser(activity)}</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption" color="text.secondary">
+                            {formatTime(activity.timestamp)}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </Grid>

@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
   Button,
   IconButton,
-  Card,
-  CardContent,
   Tabs,
   Tab,
   TextField,
@@ -24,14 +22,61 @@ import {
   CheckCircle as ApproveIcon,
   Edit as EditIcon,
   Send as SendIcon,
-  Info as InfoIcon,
-  Warning as WarningIcon,
+  Save as SaveIcon,
   SmartToy as AIIcon,
   Person as PersonIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { mockInvoices, mockChatHistory, Invoice, ChatMessage } from '@/data/mockData';
+import { useAuth } from '@/context/AuthContext';
+import { apiClient } from '@/api/client';
+
+/** GET /api/invoices/:id response shape (expanded + flat for backward compat) */
+export interface InvoiceDetailApi {
+  id: string;
+  filename: string;
+  mimeType?: string;
+  status: string;
+  createdAt: string;
+  fileUrl: string;
+  fields: {
+    invoiceNumber?: string | null;
+    invoiceDate?: string | null;
+    supplier?: { name?: string | null; address?: string | null; eik?: string | null; vatNumber?: string | null } | null;
+    client?: { name?: string | null; eik?: string | null; vatNumber?: string | null } | null;
+    service?: { description?: string | null; quantity?: string | null; unitPrice?: number | null; total?: number | null } | null;
+    accountingAccount?: string | null;
+    amounts?: { netAmount?: number | null; vatAmount?: number | null; totalAmount?: number | null; currency?: string | null } | null;
+    confidenceScores?: Record<string, number> | null;
+    extractedAt?: string | null;
+    supplierName?: string | null;
+    supplierVatNumber?: string | null;
+    currency?: string | null;
+    netAmount?: number | null;
+    vatAmount?: number | null;
+    totalAmount?: number | null;
+  } | null;
+  approvals: { approvedBy: string; approvedAt: string; action: string }[];
+}
+
+/** Normalize confidence score to 0-1 (API may return 0-100) */
+function normalizeScore(v: number | undefined | null): number {
+  if (v == null || Number.isNaN(v)) return 0;
+  return v > 1 ? v / 100 : v;
+}
+
+/** Get confidence score; supports flat (supplierName) and dotted (supplier.name) keys */
+function getScore(scores: Record<string, number>, flatKey: string, dottedKey?: string): number {
+  const v = scores[flatKey] ?? (dottedKey ? scores[dottedKey] : undefined);
+  return normalizeScore(v);
+}
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -45,19 +90,23 @@ const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
   </div>
 );
 
-const ConfidenceIndicator: React.FC<{ score: number }> = ({ score }) => {
+const LOW_CONFIDENCE_THRESHOLD = 0.7;
+
+const ConfidenceIndicator: React.FC<{ score: number; lowHighlight?: boolean }> = ({ score, lowHighlight }) => {
   const { t } = useTranslation();
   const getColor = () => {
     if (score >= 0.9) return 'success';
-    if (score >= 0.75) return 'warning';
+    if (score >= LOW_CONFIDENCE_THRESHOLD) return 'warning';
     return 'error';
   };
 
   const getLabel = () => {
     if (score >= 0.9) return t('invoiceDetail.confidenceHigh');
-    if (score >= 0.75) return t('invoiceDetail.confidenceMedium');
+    if (score >= LOW_CONFIDENCE_THRESHOLD) return t('invoiceDetail.confidenceMedium');
     return t('invoiceDetail.confidenceLow');
   };
+
+  const isLow = score < LOW_CONFIDENCE_THRESHOLD;
 
   return (
     <Tooltip title={t('invoiceDetail.confidencePct', { pct: (score * 100).toFixed(0) })}>
@@ -66,59 +115,220 @@ const ConfidenceIndicator: React.FC<{ score: number }> = ({ score }) => {
         color={getColor()}
         size="small"
         variant="outlined"
-        sx={{ fontSize: '0.7rem', height: 20 }}
+        sx={{
+          fontSize: '0.7rem',
+          height: 20,
+          ...(lowHighlight && isLow && { borderWidth: 2, borderColor: 'error.main' }),
+        }}
       />
     </Tooltip>
   );
+};
+
+const defaultFormData = {
+  supplierName: '',
+  supplierAddress: '',
+  supplierEIK: '',
+  vatNumber: '',
+  clientName: '',
+  clientEIK: '',
+  clientVatNumber: '',
+  invoiceNumber: '',
+  invoiceDate: '',
+  serviceDescription: '',
+  quantity: '',
+  unitPrice: 0,
+  serviceTotal: 0,
+  accountingAccount: '',
+  currency: '',
+  netAmount: 0,
+  vatAmount: 0,
+  totalAmount: 0,
+};
+
+const defaultScores: Record<string, number> = {
+  supplierName: 0,
+  supplierAddress: 0,
+  supplierEIK: 0,
+  vatNumber: 0,
+  clientName: 0,
+  clientEIK: 0,
+  clientVatNumber: 0,
+  invoiceNumber: 0,
+  invoiceDate: 0,
+  serviceDescription: 0,
+  quantity: 0,
+  unitPrice: 0,
+  serviceTotal: 0,
+  accountingAccount: 0,
+  currency: 0,
+  netAmount: 0,
+  vatAmount: 0,
+  totalAmount: 0,
 };
 
 const InvoiceDetail: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const { user } = useAuth();
+  const [invoice, setInvoice] = useState<InvoiceDetailApi | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [tabValue, setTabValue] = useState(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [savingFields, setSavingFields] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
-  
-  // Form state
-  const [formData, setFormData] = useState({
-    supplierName: '',
-    vatNumber: '',
-    invoiceNumber: '',
-    invoiceDate: '',
-    currency: '',
-    netAmount: 0,
-    vatAmount: 0,
-    totalAmount: 0,
-  });
+  const [formData, setFormData] = useState(defaultFormData);
+  const [confidenceScores, setConfidenceScores] = useState<Record<string, number>>(defaultScores);
+  const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
+  const [fileLoadError, setFileLoadError] = useState<string | null>(null);
+  const fileUrlRef = useRef<string | null>(null);
 
+  // Fetch invoice by id
   useEffect(() => {
-    const foundInvoice = mockInvoices.find(inv => inv.id === id);
-    if (foundInvoice) {
-      setInvoice(foundInvoice);
-      setFormData({
-        supplierName: foundInvoice.supplierName,
-        vatNumber: foundInvoice.vatNumber,
-        invoiceNumber: foundInvoice.invoiceNumber,
-        invoiceDate: foundInvoice.invoiceDate,
-        currency: foundInvoice.currency,
-        netAmount: foundInvoice.netAmount,
-        vatAmount: foundInvoice.vatAmount,
-        totalAmount: foundInvoice.totalAmount,
+    if (!id) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setNotFound(false);
+    setInvoice(null);
+    setFormData(defaultFormData);
+    setConfidenceScores(defaultScores);
+    setFileObjectUrl(null);
+    setFileLoadError(null);
+    fileUrlRef.current = null;
+
+    apiClient
+      .get<InvoiceDetailApi>('/api/invoices/' + id)
+      .then((res) => {
+        if (cancelled) return;
+        const data = res.data;
+        setInvoice(data);
+        const f = data.fields;
+        if (f) {
+          setFormData({
+            supplierName: f.supplier?.name ?? f.supplierName ?? '',
+            supplierAddress: f.supplier?.address ?? '',
+            supplierEIK: f.supplier?.eik ?? '',
+            vatNumber: f.supplier?.vatNumber ?? f.supplierVatNumber ?? '',
+            clientName: f.client?.name ?? '',
+            clientEIK: f.client?.eik ?? '',
+            clientVatNumber: f.client?.vatNumber ?? '',
+            invoiceNumber: f.invoiceNumber ?? '',
+            invoiceDate: f.invoiceDate ?? '',
+            serviceDescription: f.service?.description ?? '',
+            quantity: f.service?.quantity ?? '',
+            unitPrice: f.service?.unitPrice ?? 0,
+            serviceTotal: f.service?.total ?? 0,
+            accountingAccount: f.accountingAccount ?? '',
+            currency: f.amounts?.currency ?? f.currency ?? '',
+            netAmount: f.amounts?.netAmount ?? f.netAmount ?? 0,
+            vatAmount: f.amounts?.vatAmount ?? f.vatAmount ?? 0,
+            totalAmount: f.amounts?.totalAmount ?? f.totalAmount ?? 0,
+          });
+          const scores = f.confidenceScores ?? {};
+          setConfidenceScores({ ...defaultScores, ...scores });
+        }
+        setLoading(false);
+      })
+      .catch((err: { response?: { status: number; data?: { error?: string } }; message?: string }) => {
+        if (cancelled) return;
+        setLoading(false);
+        setInvoice(null);
+        if (err.response?.status === 404) {
+          setNotFound(true);
+        } else {
+          setError(err.response?.data?.error ?? err.message ?? 'Failed to load invoice');
+        }
       });
-      setChatMessages(mockChatHistory[foundInvoice.id] || []);
-    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
-  const handleApprove = () => {
-    if (invoice) {
+  // Fetch file as blob and create object URL (auth required)
+  useEffect(() => {
+    if (!invoice?.fileUrl) return;
+    const url = invoice.fileUrl;
+    fileUrlRef.current = url;
+    setFileLoadError(null);
+
+    apiClient
+      .get(url, { responseType: 'blob' })
+      .then((res) => {
+        if (fileUrlRef.current !== url) return;
+        const blob = res.data as Blob;
+        const objectUrl = URL.createObjectURL(blob);
+        setFileObjectUrl(objectUrl);
+      })
+      .catch(() => {
+        if (fileUrlRef.current === url) {
+          setFileLoadError('Unable to load file');
+        }
+      });
+
+    return () => {
+      fileUrlRef.current = null;
+      setFileObjectUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, [invoice?.id, invoice?.fileUrl]);
+
+  const handleApprove = async () => {
+    if (!invoice || !id) return;
+    try {
+      await apiClient.post('/api/invoices/' + id + '/approve', {
+        action: 'approved',
+        approvedBy: user?.email ?? '',
+      });
       setInvoice({ ...invoice, status: 'approved' });
       setIsEditing(false);
       setSnackbar({ open: true, message: t('invoiceDetail.approvedSuccess'), severity: 'success' });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ?? (err as Error)?.message ?? 'Failed to approve';
+      setSnackbar({ open: true, message: msg, severity: 'error' });
+    }
+  };
+
+  const handleSaveFields = async () => {
+    if (!id || invoice?.status === 'approved') return;
+    setSavingFields(true);
+    try {
+      await apiClient.patch('/api/invoices/' + id + '/fields', {
+        supplierName: formData.supplierName,
+        supplierAddress: formData.supplierAddress,
+        supplierEIK: formData.supplierEIK,
+        supplierVatNumber: formData.vatNumber,
+        clientName: formData.clientName,
+        clientEIK: formData.clientEIK,
+        clientVatNumber: formData.clientVatNumber,
+        invoiceNumber: formData.invoiceNumber,
+        invoiceDate: formData.invoiceDate,
+        serviceDescription: formData.serviceDescription,
+        quantity: formData.quantity,
+        unitPrice: formData.unitPrice,
+        serviceTotal: formData.serviceTotal,
+        accountingAccount: formData.accountingAccount,
+        currency: formData.currency,
+        netAmount: formData.netAmount,
+        vatAmount: formData.vatAmount,
+        totalAmount: formData.totalAmount,
+      });
+      setIsEditing(false);
+      setSnackbar({ open: true, message: t('common.save') + ' succeeded', severity: 'success' });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ?? (err as Error)?.message ?? 'Failed to save';
+      setSnackbar({ open: true, message: msg, severity: 'error' });
+    } finally {
+      setSavingFields(false);
     }
   };
 
@@ -173,7 +383,7 @@ const InvoiceDetail: React.FC = () => {
     });
   };
 
-  if (!invoice) {
+  if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
         <CircularProgress />
@@ -181,7 +391,36 @@ const InvoiceDetail: React.FC = () => {
     );
   }
 
+  if (notFound) {
+    return (
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
+          Invoice not found
+        </Typography>
+        <Button variant="outlined" startIcon={<BackIcon />} onClick={() => navigate('/invoices')}>
+          Back to Invoices
+        </Button>
+      </Box>
+    );
+  }
+
+  if (error || !invoice) {
+    return (
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error ?? 'Failed to load invoice'}
+        </Alert>
+        <Button variant="outlined" startIcon={<BackIcon />} onClick={() => navigate('/invoices')}>
+          Back to Invoices
+        </Button>
+      </Box>
+    );
+  }
+
   const isApproved = invoice.status === 'approved';
+  const isPdf =
+    invoice.mimeType === 'application/pdf' ||
+    invoice.filename.toLowerCase().endsWith('.pdf');
 
   return (
     <Box sx={{ height: 'calc(100vh - 120px)' }}>
@@ -193,10 +432,10 @@ const InvoiceDetail: React.FC = () => {
           </IconButton>
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 700 }}>
-              {invoice.invoiceNumber}
+              {formData.invoiceNumber || invoice.filename}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {invoice.fileName}
+              {invoice.filename}
             </Typography>
           </Box>
           <Chip
@@ -215,6 +454,16 @@ const InvoiceDetail: React.FC = () => {
               >
                 {isEditing ? t('invoiceDetail.cancelEdit') : t('invoiceDetail.edit')}
               </Button>
+              {isEditing && (
+                <Button
+                  variant="outlined"
+                  startIcon={<SaveIcon />}
+                  onClick={handleSaveFields}
+                  disabled={savingFields}
+                >
+                  {t('common.save')}
+                </Button>
+              )}
               <Button
                 variant="contained"
                 color="success"
@@ -230,7 +479,7 @@ const InvoiceDetail: React.FC = () => {
 
       {/* Main Content - Split View */}
       <Box sx={{ display: 'flex', gap: 3, height: 'calc(100% - 80px)' }}>
-        {/* Left: Document Viewer */}
+        {/* Left: Document Viewer - PDF or image */}
         <Paper
           sx={{
             flex: 1,
@@ -251,54 +500,39 @@ const InvoiceDetail: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              flexDirection: 'column',
-              gap: 2,
+              overflow: 'hidden',
+              minHeight: 0,
             }}
           >
-            <Box
-              sx={{
-                width: '80%',
-                maxWidth: 400,
-                aspectRatio: '8.5/11',
-                bgcolor: 'white',
-                borderRadius: 1,
-                boxShadow: 3,
-                p: 4,
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
-              <Box sx={{ mb: 4, pb: 2, borderBottom: '2px solid', borderColor: 'primary.main' }}>
-                <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                  {formData.supplierName}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  VAT: {formData.vatNumber}
-                </Typography>
-              </Box>
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="caption" color="text.secondary">Invoice Number</Typography>
-                <Typography variant="body2" fontWeight={600}>{formData.invoiceNumber}</Typography>
-              </Box>
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="caption" color="text.secondary">Date</Typography>
-                <Typography variant="body2">{formData.invoiceDate}</Typography>
-              </Box>
-              <Box sx={{ mt: 'auto', pt: 3, borderTop: '1px solid', borderColor: 'grey.200' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Net Amount:</Typography>
-                  <Typography variant="body2">{formData.currency} {formData.netAmount.toFixed(2)}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">VAT:</Typography>
-                  <Typography variant="body2">{formData.currency} {formData.vatAmount.toFixed(2)}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 1, borderTop: '1px solid', borderColor: 'grey.200' }}>
-                  <Typography variant="subtitle2" fontWeight={700}>{t('invoiceDetail.total')}</Typography>
-                  <Typography variant="subtitle2" fontWeight={700}>{formData.currency} {formData.totalAmount.toFixed(2)}</Typography>
-                </Box>
-              </Box>
-            </Box>
+            {fileLoadError && (
+              <Typography color="text.secondary">{fileLoadError}</Typography>
+            )}
+            {!fileLoadError && !fileObjectUrl && (
+              <CircularProgress />
+            )}
+            {!fileLoadError && fileObjectUrl && isPdf && (
+              <iframe
+                src={fileObjectUrl}
+                title="PDF"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  border: 0,
+                }}
+              />
+            )}
+            {!fileLoadError && fileObjectUrl && !isPdf && (
+              <Box
+                component="img"
+                src={fileObjectUrl}
+                alt={invoice.filename}
+                sx={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain',
+                }}
+              />
+            )}
           </Box>
         </Paper>
 
@@ -330,132 +564,165 @@ const InvoiceDetail: React.FC = () => {
               )}
 
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                <Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.supplierName')}</Typography>
-                    <ConfidenceIndicator score={invoice.confidenceScores.supplierName} />
-                  </Box>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    value={formData.supplierName}
-                    onChange={(e) => setFormData({ ...formData, supplierName: e.target.value })}
-                    disabled={!isEditing || isApproved}
-                  />
-                </Box>
-
-                <Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.vatNumber')}</Typography>
-                    <ConfidenceIndicator score={invoice.confidenceScores.vatNumber} />
-                  </Box>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    value={formData.vatNumber}
-                    onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })}
-                    disabled={!isEditing || isApproved}
-                  />
-                </Box>
-
-                <Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.invoiceNumber')}</Typography>
-                    <ConfidenceIndicator score={invoice.confidenceScores.invoiceNumber} />
-                  </Box>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    value={formData.invoiceNumber}
-                    onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })}
-                    disabled={!isEditing || isApproved}
-                  />
-                </Box>
-
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <Box sx={{ flex: 1 }}>
+                {/* Supplier */}
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 0.5 }}>{t('invoiceDetail.supplier')}</Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pl: 1 }}>
+                  <Box sx={{ borderLeft: 2, borderColor: getScore(confidenceScores, 'supplierName', 'supplier.name') < LOW_CONFIDENCE_THRESHOLD ? 'error.main' : 'transparent', pl: 1 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.invoiceDate')}</Typography>
-                      <ConfidenceIndicator score={invoice.confidenceScores.invoiceDate} />
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.supplierName')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'supplierName', 'supplier.name')} lowHighlight />
                     </Box>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      type="date"
-                      value={formData.invoiceDate}
-                      onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })}
-                      disabled={!isEditing || isApproved}
-                    />
+                    <TextField fullWidth size="small" value={formData.supplierName} onChange={(e) => setFormData({ ...formData, supplierName: e.target.value })} disabled={!isEditing || isApproved} />
                   </Box>
-                  <Box sx={{ flex: 1 }}>
+                  <Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.currency')}</Typography>
-                      <ConfidenceIndicator score={invoice.confidenceScores.currency} />
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.supplierAddress')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'supplierAddress', 'supplier.address')} lowHighlight />
                     </Box>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      value={formData.currency}
-                      onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                      disabled={!isEditing || isApproved}
-                    />
+                    <TextField fullWidth size="small" value={formData.supplierAddress} onChange={(e) => setFormData({ ...formData, supplierAddress: e.target.value })} disabled={!isEditing || isApproved} />
+                  </Box>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.supplierEIK')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'supplierEIK', 'supplier.eik')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" value={formData.supplierEIK} onChange={(e) => setFormData({ ...formData, supplierEIK: e.target.value })} disabled={!isEditing || isApproved} />
+                  </Box>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.vatNumber')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'vatNumber', 'supplier.vat')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" value={formData.vatNumber} onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })} disabled={!isEditing || isApproved} />
                   </Box>
                 </Box>
 
                 <Divider sx={{ my: 1 }} />
 
-                <Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.netAmount')}</Typography>
-                    <ConfidenceIndicator score={invoice.confidenceScores.netAmount} />
+                {/* Client */}
+                <Typography variant="subtitle2" color="text.secondary">{t('invoiceDetail.client')}</Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pl: 1 }}>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.clientName')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'clientName', 'client.name')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" value={formData.clientName} onChange={(e) => setFormData({ ...formData, clientName: e.target.value })} disabled={!isEditing || isApproved} />
                   </Box>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="number"
-                    value={formData.netAmount}
-                    onChange={(e) => setFormData({ ...formData, netAmount: parseFloat(e.target.value) || 0 })}
-                    disabled={!isEditing || isApproved}
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start">{formData.currency}</InputAdornment>,
-                    }}
-                  />
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.clientEIK')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'clientEIK', 'client.eik')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" value={formData.clientEIK} onChange={(e) => setFormData({ ...formData, clientEIK: e.target.value })} disabled={!isEditing || isApproved} />
+                  </Box>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.clientVatNumber')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'clientVatNumber', 'client.vat')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" value={formData.clientVatNumber} onChange={(e) => setFormData({ ...formData, clientVatNumber: e.target.value })} disabled={!isEditing || isApproved} />
+                  </Box>
                 </Box>
 
-                <Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.vatAmount')}</Typography>
-                    <ConfidenceIndicator score={invoice.confidenceScores.vatAmount} />
+                <Divider sx={{ my: 1 }} />
+
+                {/* Invoice info */}
+                <Typography variant="subtitle2" color="text.secondary">{t('invoiceDetail.invoiceInfo')}</Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pl: 1 }}>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.invoiceNumber')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'invoiceNumber')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" value={formData.invoiceNumber} onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })} disabled={!isEditing || isApproved} />
                   </Box>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="number"
-                    value={formData.vatAmount}
-                    onChange={(e) => setFormData({ ...formData, vatAmount: parseFloat(e.target.value) || 0 })}
-                    disabled={!isEditing || isApproved}
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start">{formData.currency}</InputAdornment>,
-                    }}
-                  />
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.invoiceDate')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'invoiceDate')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" type="date" value={formData.invoiceDate} onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })} disabled={!isEditing || isApproved} />
+                  </Box>
                 </Box>
 
-                <Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">{t('invoiceDetail.totalAmount')}</Typography>
-                    <ConfidenceIndicator score={invoice.confidenceScores.totalAmount} />
+                <Divider sx={{ my: 1 }} />
+
+                {/* Service */}
+                <Typography variant="subtitle2" color="text.secondary">{t('invoiceDetail.service')}</Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pl: 1 }}>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.serviceDescription')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'serviceDescription', 'service.description')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" value={formData.serviceDescription} onChange={(e) => setFormData({ ...formData, serviceDescription: e.target.value })} disabled={!isEditing || isApproved} />
                   </Box>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="number"
-                    value={formData.totalAmount}
-                    onChange={(e) => setFormData({ ...formData, totalAmount: parseFloat(e.target.value) || 0 })}
-                    disabled={!isEditing || isApproved}
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start">{formData.currency}</InputAdornment>,
-                    }}
-                  />
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">{t('invoiceDetail.quantity')}</Typography>
+                        <ConfidenceIndicator score={getScore(confidenceScores, 'quantity', 'service.quantity')} lowHighlight />
+                      </Box>
+                      <TextField fullWidth size="small" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} disabled={!isEditing || isApproved} />
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">{t('invoiceDetail.unitPrice')}</Typography>
+                        <ConfidenceIndicator score={getScore(confidenceScores, 'unitPrice', 'service.unitPrice')} lowHighlight />
+                      </Box>
+                      <TextField fullWidth size="small" type="number" value={formData.unitPrice} onChange={(e) => setFormData({ ...formData, unitPrice: parseFloat(e.target.value) || 0 })} disabled={!isEditing || isApproved} InputProps={{ startAdornment: <InputAdornment position="start">{formData.currency}</InputAdornment> }} />
+                    </Box>
+                  </Box>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.serviceTotal')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'serviceTotal', 'service.total')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" type="number" value={formData.serviceTotal} onChange={(e) => setFormData({ ...formData, serviceTotal: parseFloat(e.target.value) || 0 })} disabled={!isEditing || isApproved} InputProps={{ startAdornment: <InputAdornment position="start">{formData.currency}</InputAdornment> }} />
+                  </Box>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.accountingAccount')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'accountingAccount')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" value={formData.accountingAccount} onChange={(e) => setFormData({ ...formData, accountingAccount: e.target.value })} disabled={!isEditing || isApproved} />
+                  </Box>
+                </Box>
+
+                <Divider sx={{ my: 1 }} />
+
+                {/* Amounts */}
+                <Typography variant="subtitle2" color="text.secondary">{t('invoiceDetail.amounts')}</Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pl: 1 }}>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.currency')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'currency', 'amounts.currency')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" value={formData.currency} onChange={(e) => setFormData({ ...formData, currency: e.target.value })} disabled={!isEditing || isApproved} />
+                  </Box>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.netAmount')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'netAmount', 'amounts.subtotal')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" type="number" value={formData.netAmount} onChange={(e) => setFormData({ ...formData, netAmount: parseFloat(e.target.value) || 0 })} disabled={!isEditing || isApproved} InputProps={{ startAdornment: <InputAdornment position="start">{formData.currency}</InputAdornment> }} />
+                  </Box>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.vatAmount')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'vatAmount', 'amounts.vat')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" type="number" value={formData.vatAmount} onChange={(e) => setFormData({ ...formData, vatAmount: parseFloat(e.target.value) || 0 })} disabled={!isEditing || isApproved} InputProps={{ startAdornment: <InputAdornment position="start">{formData.currency}</InputAdornment> }} />
+                  </Box>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.totalAmount')}</Typography>
+                      <ConfidenceIndicator score={getScore(confidenceScores, 'totalAmount', 'amounts.total')} lowHighlight />
+                    </Box>
+                    <TextField fullWidth size="small" type="number" value={formData.totalAmount} onChange={(e) => setFormData({ ...formData, totalAmount: parseFloat(e.target.value) || 0 })} disabled={!isEditing || isApproved} InputProps={{ startAdornment: <InputAdornment position="start">{formData.currency}</InputAdornment> }} />
+                  </Box>
                 </Box>
               </Box>
             </Box>

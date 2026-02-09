@@ -4,6 +4,7 @@ dotenv.config( { path: ".env" });
 export interface Config {
   port: number;
   uploadDir: string;
+  ocrServiceUrl: string;
   jwtSecret: string;
   jwtExpiresIn: string;
   smtpHost: string;
@@ -19,6 +20,7 @@ export interface Config {
 export const config: Config = {
   port: parseInt(process.env.PORT ?? "3001", 10),
   uploadDir: process.env.UPLOAD_DIR ?? "uploads",
+  ocrServiceUrl: process.env.OCR_SERVICE_URL ?? "http://localhost:8000",
   jwtSecret: process.env.JWT_SECRET ?? "JWT_SECRET",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
   smtpHost: process.env.SMTP_HOST ?? "",

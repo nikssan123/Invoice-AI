@@ -100,6 +100,7 @@ interface DeleteDialogProps {
   open: boolean;
   itemType: 'folder' | 'invoice';
   itemName: string;
+  itemNames?: string[];
   hasChildren?: boolean;
   onClose: () => void;
   onConfirm: () => void;
@@ -109,11 +110,18 @@ export const DeleteDialog: React.FC<DeleteDialogProps> = ({
   open,
   itemType,
   itemName,
+  itemNames,
   hasChildren,
   onClose,
   onConfirm,
 }) => {
   const { t } = useTranslation();
+
+  const allNames = itemNames && itemNames.length > 0 ? itemNames : itemName ? [itemName] : [];
+  const maxToShow = 5;
+  const visibleNames = allNames.slice(0, maxToShow);
+  const remaining = allNames.length - visibleNames.length;
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <DialogTitle>{itemType === 'folder' ? t('folderDialogs.deleteFolder') : t('folderDialogs.deleteInvoice')}</DialogTitle>
@@ -121,6 +129,20 @@ export const DeleteDialog: React.FC<DeleteDialogProps> = ({
         <Typography>
           {t('folderDialogs.deleteConfirm', { name: itemName })}
         </Typography>
+        {visibleNames.length > 0 && (
+          <Box sx={{ mt: 1 }}>
+            {visibleNames.map((name, idx) => (
+              <Typography key={`${name}-${idx}`} variant="body2">
+                {name}
+              </Typography>
+            ))}
+            {remaining > 0 && (
+              <Typography variant="body2" color="text.secondary">
+                + {remaining} more
+              </Typography>
+            )}
+          </Box>
+        )}
         {hasChildren && (
           <Typography color="error" sx={{ mt: 1 }}>
             {t('folderDialogs.deleteWarning')}
@@ -243,6 +265,7 @@ interface MoveDialogProps {
   open: boolean;
   itemType: 'folder' | 'invoice';
   itemName: string;
+  itemNames?: string[];
   itemId: string;
   folders: Record<string, Folder>;
   currentFolderId: string;
@@ -254,6 +277,7 @@ export const MoveDialog: React.FC<MoveDialogProps> = ({
   open,
   itemType,
   itemName,
+  itemNames,
   itemId,
   folders,
   currentFolderId,
@@ -305,13 +329,33 @@ export const MoveDialog: React.FC<MoveDialogProps> = ({
   if (!rootFolder) return null;
 
   const { t } = useTranslation();
+
+  const allNames = itemNames && itemNames.length > 0 ? itemNames : itemName ? [itemName] : [];
+  const maxToShow = 5;
+  const visibleNames = allNames.slice(0, maxToShow);
+  const remaining = allNames.length - visibleNames.length;
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <DialogTitle>{itemType === 'folder' ? t('folderDialogs.moveFolder') : t('folderDialogs.moveInvoice')}</DialogTitle>
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           {t('folderDialogs.selectDestination', { name: itemName })}
         </Typography>
+        {visibleNames.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            {visibleNames.map((name, idx) => (
+              <Typography key={`${name}-${idx}`} variant="body2">
+                {name}
+              </Typography>
+            ))}
+            {remaining > 0 && (
+              <Typography variant="body2" color="text.secondary">
+                + {remaining} more
+              </Typography>
+            )}
+          </Box>
+        )}
         <Box
           sx={{
             border: 1,

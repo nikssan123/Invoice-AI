@@ -140,6 +140,16 @@ const FolderNode: React.FC<FolderNodeProps> = ({
             }}
           />
         )}
+
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            onContextMenu(e as unknown as React.MouseEvent, folder.id);
+          }}
+        >
+          <MoreIcon fontSize="small" />
+        </IconButton>
       </ListItemButton>
       
       {hasChildren && (

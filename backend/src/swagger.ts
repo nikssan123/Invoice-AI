@@ -11,7 +11,8 @@ const options = {
     info: {
       title: "Invoice intake and review API",
       version: "1.0.0",
-      description: "API for uploading, extracting, and approving invoices",
+      description:
+        "API for uploading, extracting, and approving invoices. Invoice extraction depends on an optional OCR service (configurable via OCR_SERVICE_URL).",
     },
     servers: [{ url: "/" }],
     components: {

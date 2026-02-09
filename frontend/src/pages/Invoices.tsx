@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -14,12 +14,16 @@ import {
   Toolbar,
   IconButton,
   Tooltip,
+  Alert,
+   Menu,
+   MenuItem,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
   Search as SearchIcon,
   Delete as DeleteIcon,
   DriveFileMove as MoveIcon,
+  FilterList as FilterListIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import FolderTree from '@/components/invoices/FolderTree';
@@ -33,6 +37,7 @@ import {
   mockFolderInvoices,
   getFolderPath,
 } from '@/data/folderData';
+import { apiClient } from '@/api/client';
 
 const Invoices: React.FC = () => {
   const { t } = useTranslation();
@@ -43,9 +48,20 @@ const Invoices: React.FC = () => {
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Filter state
+  const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | FolderInvoice['status']>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [amountMin, setAmountMin] = useState('');
+  const [amountMax, setAmountMax] = useState('');
+
+  const filterMenuOpen = Boolean(filterAnchorEl);
+
   // Upload dialog state
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
   // Folder dialog state
@@ -70,6 +86,34 @@ const Invoices: React.FC = () => {
     id: string;
   } | null>(null);
 
+  // Error message for folder/invoice actions (create, move, delete)
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const loadTree = useCallback(async () => {
+    try {
+      const res = await apiClient.get<{
+        folders: Folder[];
+        invoices: Record<string, FolderInvoice>;
+      }>('/api/invoices/tree');
+
+      const folderMap: Record<string, Folder> = {};
+      res.data.folders.forEach((f) => {
+        folderMap[f.id] = f;
+      });
+
+      setFolders(folderMap);
+      setInvoices(res.data.invoices);
+      setSelectedFolderId('root');
+    } catch (err) {
+      // Leave mock data in place if backend tree cannot be loaded
+      console.error('Failed to load invoice tree', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTree();
+  }, [loadTree]);
+
   // Get current folder and its contents
   const currentFolder = folders[selectedFolderId];
   const folderPath = getFolderPath(selectedFolderId, folders);
@@ -79,17 +123,80 @@ const Invoices: React.FC = () => {
     .map((id) => folders[id])
     .filter(Boolean) || [];
 
-  // Get invoices in current folder (with search filter)
+  // Get invoices in current folder (with search and filter)
   const folderInvoices = currentFolder?.invoiceIds
     .map((id) => invoices[id])
     .filter(Boolean)
-    .filter(
-      (invoice) =>
-        !searchQuery ||
-        invoice.supplierName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        invoice.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        invoice.fileName.toLowerCase().includes(searchQuery.toLowerCase())
-    ) || [];
+    // Search by supplier, invoice number, or file name
+    .filter((invoice) => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        invoice.supplierName.toLowerCase().includes(q) ||
+        invoice.invoiceNumber.toLowerCase().includes(q) ||
+        invoice.fileName.toLowerCase().includes(q)
+      );
+    })
+    // Advanced filters: date, amount, status
+    .filter((invoice) => {
+      // Status filter
+      if (statusFilter !== 'all' && invoice.status !== statusFilter) {
+        return false;
+      }
+
+      // Date range filter (inclusive)
+      if (dateFrom || dateTo) {
+        const invDate = invoice.invoiceDate ? new Date(invoice.invoiceDate) : null;
+        if (invDate && !Number.isNaN(invDate.getTime())) {
+          if (dateFrom) {
+            const from = new Date(dateFrom);
+            if (!Number.isNaN(from.getTime()) && invDate < from) {
+              return false;
+            }
+          }
+          if (dateTo) {
+            const to = new Date(dateTo);
+            // Add one day to make the end date inclusive
+            if (!Number.isNaN(to.getTime()) && invDate > new Date(to.getTime() + 24 * 60 * 60 * 1000)) {
+              return false;
+            }
+          }
+        }
+      }
+
+      // Amount range filter (on totalAmount)
+      const total = invoice.totalAmount ?? 0;
+      if (amountMin) {
+        const min = Number.parseFloat(amountMin);
+        if (!Number.isNaN(min) && total < min) {
+          return false;
+        }
+      }
+      if (amountMax) {
+        const max = Number.parseFloat(amountMax);
+        if (!Number.isNaN(max) && total > max) {
+          return false;
+        }
+      }
+
+      return true;
+    }) || [];
+
+  const handleOpenFilterMenu = (event: React.MouseEvent<HTMLElement>) => {
+    setFilterAnchorEl(event.currentTarget);
+  };
+
+  const handleCloseFilterMenu = () => {
+    setFilterAnchorEl(null);
+  };
+
+  const handleClearFilters = () => {
+    setStatusFilter('all');
+    setDateFrom('');
+    setDateTo('');
+    setAmountMin('');
+    setAmountMax('');
+  };
 
   // Folder handlers
   const handleCreateFolder = (parentId: string) => {
@@ -108,34 +215,36 @@ const Invoices: React.FC = () => {
     });
   };
 
-  const handleFolderNameSubmit = (name: string) => {
-    if (folderNameDialog.mode === 'create' && folderNameDialog.parentId) {
-      const newId = `folder-${Date.now()}`;
-      const parentId = folderNameDialog.parentId;
-
-      setFolders((prev) => ({
-        ...prev,
-        [newId]: {
-          id: newId,
-          name,
-          parentId,
-          children: [],
-          invoiceIds: [],
-          createdAt: new Date().toISOString(),
-        },
-        [parentId]: {
-          ...prev[parentId],
-          children: [...prev[parentId].children, newId],
-        },
-      }));
+  const handleFolderNameSubmit = async (name: string) => {
+    setActionError(null);
+    if (folderNameDialog.mode === 'create' && folderNameDialog.parentId !== undefined) {
+      try {
+        const parentId =
+          folderNameDialog.parentId === 'root' ? null : folderNameDialog.parentId;
+        await apiClient.post('/api/folders', { name: name.trim(), parentId });
+        await loadTree();
+        setFolderNameDialog({ open: false, mode: 'create' });
+      } catch (err: unknown) {
+        const message =
+          (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          (err as Error)?.message ??
+          'Failed to create folder';
+        setActionError(message);
+      }
     } else if (folderNameDialog.mode === 'rename' && folderNameDialog.folderId) {
-      setFolders((prev) => ({
-        ...prev,
-        [folderNameDialog.folderId!]: {
-          ...prev[folderNameDialog.folderId!],
-          name,
-        },
-      }));
+      try {
+        await apiClient.patch(`/api/folders/${folderNameDialog.folderId}`, {
+          name: name.trim(),
+        });
+        await loadTree();
+        setFolderNameDialog({ open: false, mode: 'create' });
+      } catch (err: unknown) {
+        const message =
+          (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          (err as Error)?.message ??
+          'Failed to rename folder';
+        setActionError(message);
+      }
     }
   };
 
@@ -147,33 +256,25 @@ const Invoices: React.FC = () => {
     });
   };
 
-  const handleConfirmDeleteFolder = () => {
+  const handleConfirmDeleteFolder = async () => {
     if (!deleteDialog || deleteDialog.type !== 'folder') return;
 
     const folderId = deleteDialog.id;
-    const folder = folders[folderId];
-    if (!folder || !folder.parentId) return;
+    setActionError(null);
 
-    // Remove from parent's children
-    setFolders((prev) => {
-      const newFolders = { ...prev };
-      const parent = newFolders[folder.parentId!];
-      if (parent) {
-        newFolders[folder.parentId!] = {
-          ...parent,
-          children: parent.children.filter((id) => id !== folderId),
-        };
-      }
-      delete newFolders[folderId];
-      return newFolders;
-    });
-
-    // If current folder was deleted, go to parent
-    if (selectedFolderId === folderId) {
-      setSelectedFolderId(folder.parentId);
+    try {
+      await apiClient.delete(`/api/folders/${folderId}`);
+      await loadTree();
+      // After deletion, safest is to reset to root to avoid pointing at a deleted folder
+      setSelectedFolderId('root');
+      setDeleteDialog(null);
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        (err as Error)?.message ??
+        'Failed to delete folder';
+      setActionError(message);
     }
-
-    setDeleteDialog(null);
   };
 
   const handleMoveFolder = (folderId: string) => {
@@ -249,41 +350,56 @@ const Invoices: React.FC = () => {
     });
   };
 
-  const handleConfirmDeleteInvoice = () => {
+  const handleConfirmDeleteInvoice = async () => {
     if (!deleteDialog || deleteDialog.type !== 'invoice') return;
 
-    const invoiceId = deleteDialog.id;
-    const invoice = invoices[invoiceId];
-    if (!invoice) return;
+    setActionError(null);
+    try {
+      // Bulk delete
+      if (deleteDialog.id === '__bulk__') {
+        const ids = Array.from(selectedInvoices);
+        if (ids.length === 0) {
+          setDeleteDialog(null);
+          return;
+        }
 
-    // Remove from folder
-    setFolders((prev) => {
-      const folder = prev[invoice.folderId];
-      if (!folder) return prev;
-      return {
-        ...prev,
-        [invoice.folderId]: {
-          ...folder,
-          invoiceIds: folder.invoiceIds.filter((id) => id !== invoiceId),
-        },
-      };
-    });
+        let failed = 0;
+        await Promise.all(
+          ids.map(async (invoiceId) => {
+            try {
+              await apiClient.delete(`/api/invoices/${invoiceId}`);
+            } catch (err) {
+              failed += 1;
+              console.error('Failed to delete invoice', invoiceId, err);
+            }
+          })
+        );
 
-    // Remove invoice
-    setInvoices((prev) => {
-      const newInvoices = { ...prev };
-      delete newInvoices[invoiceId];
-      return newInvoices;
-    });
+        await loadTree();
+        setSelectedInvoices(new Set());
+        setDeleteDialog(null);
 
-    // Remove from selection
-    setSelectedInvoices((prev) => {
-      const next = new Set(prev);
-      next.delete(invoiceId);
-      return next;
-    });
-
-    setDeleteDialog(null);
+        if (failed > 0) {
+          setActionError(`Failed to delete ${failed} invoices`);
+        }
+      } else {
+        const invoiceId = deleteDialog.id;
+        await apiClient.delete(`/api/invoices/${invoiceId}`);
+        await loadTree();
+        setSelectedInvoices((prev) => {
+          const next = new Set(prev);
+          next.delete(invoiceId);
+          return next;
+        });
+        setDeleteDialog(null);
+      }
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        (err as Error)?.message ??
+        'Failed to delete invoice';
+      setActionError(message);
+    }
   };
 
   const handleMoveInvoice = (invoiceId: string) => {
@@ -294,154 +410,150 @@ const Invoices: React.FC = () => {
     });
   };
 
-  const handleConfirmMoveInvoice = (targetFolderId: string) => {
+  const handleConfirmMoveInvoice = async (targetFolderId: string) => {
     if (!moveDialog || moveDialog.type !== 'invoice') return;
 
-    const invoiceId = moveDialog.id;
-    const invoice = invoices[invoiceId];
-    if (!invoice) return;
+    setActionError(null);
+    try {
+      // Bulk mode: special marker id
+      if (moveDialog.id === '__bulk__') {
+        const ids = Array.from(selectedInvoices);
+        if (ids.length === 0) {
+          setMoveDialog(null);
+          return;
+        }
 
-    const oldFolderId = invoice.folderId;
-
-    // Update folders
-    setFolders((prev) => {
-      const oldFolder = prev[oldFolderId];
-      const newFolder = prev[targetFolderId];
-
-      if (!oldFolder || !newFolder) return prev;
-
-      return {
-        ...prev,
-        [oldFolderId]: {
-          ...oldFolder,
-          invoiceIds: oldFolder.invoiceIds.filter((id) => id !== invoiceId),
-        },
-        [targetFolderId]: {
-          ...newFolder,
-          invoiceIds: [...newFolder.invoiceIds, invoiceId],
-        },
-      };
-    });
-
-    // Update invoice
-    setInvoices((prev) => ({
-      ...prev,
-      [invoiceId]: {
-        ...prev[invoiceId],
-        folderId: targetFolderId,
-      },
-    }));
-
-    setMoveDialog(null);
+        await apiClient.post('/api/invoices/bulk-move', {
+          invoiceIds: ids,
+          targetFolderId,
+        });
+        await loadTree();
+        setSelectedInvoices(new Set());
+        setMoveDialog(null);
+      } else {
+        const invoiceId = moveDialog.id;
+        await apiClient.post(`/api/invoices/${invoiceId}/move`, {
+          targetFolderId,
+        });
+        await loadTree();
+        setMoveDialog(null);
+      }
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        (err as Error)?.message ??
+        'Failed to move invoice';
+      setActionError(message);
+    }
   };
 
   // Bulk actions
-  const handleBulkDelete = () => {
-    selectedInvoices.forEach((invoiceId) => {
-      const invoice = invoices[invoiceId];
-      if (!invoice) return;
-
-      setFolders((prev) => {
-        const folder = prev[invoice.folderId];
-        if (!folder) return prev;
-        return {
-          ...prev,
-          [invoice.folderId]: {
-            ...folder,
-            invoiceIds: folder.invoiceIds.filter((id) => id !== invoiceId),
-          },
-        };
-      });
-
-      setInvoices((prev) => {
-        const newInvoices = { ...prev };
-        delete newInvoices[invoiceId];
-        return newInvoices;
-      });
+  const handleBulkMove = () => {
+    if (selectedInvoices.size === 0) return;
+    setMoveDialog({
+      open: true,
+      type: 'invoice',
+      id: '__bulk__',
     });
-
-    setSelectedInvoices(new Set());
   };
 
-  // Upload handler
+  const handleBulkDelete = () => {
+    if (selectedInvoices.size === 0) return;
+    setDeleteDialog({
+      open: true,
+      type: 'invoice',
+      id: '__bulk__',
+    });
+  };
+
+  // Upload handler: POST files to backend, merge response into state
   const handleUpload = useCallback(
-    (files: FileList | null) => {
+    async (files: FileList | null) => {
       if (!files || files.length === 0) return;
 
+      setUploadError(null);
       setUploading(true);
-      setTimeout(() => {
-        const newInvoices: FolderInvoice[] = Array.from(files).map((file, index) => ({
-          id: `inv-new-${Date.now()}-${index}`,
-          fileName: file.name,
-          supplierName: 'Processing...',
-          vatNumber: '',
-          invoiceNumber: '',
-          invoiceDate: new Date().toISOString().split('T')[0],
-          currency: 'EUR',
-          netAmount: 0,
-          vatAmount: 0,
-          totalAmount: 0,
-          status: 'pending' as const,
-          uploadedAt: new Date().toISOString(),
-          folderId: selectedFolderId,
-          confidenceScores: {
-            supplierName: 0,
-            vatNumber: 0,
-            invoiceNumber: 0,
-            invoiceDate: 0,
-            currency: 0,
-            netAmount: 0,
-            vatAmount: 0,
-            totalAmount: 0,
-          },
-        }));
 
-        // Add invoices to state
-        const newInvoiceMap: Record<string, FolderInvoice> = {};
-        const newInvoiceIds: string[] = [];
-        newInvoices.forEach((inv) => {
-          newInvoiceMap[inv.id] = inv;
-          newInvoiceIds.push(inv.id);
-        });
+      const formData = new FormData();
+      Array.from(files).forEach((file) => formData.append('files', file));
 
-        setInvoices((prev) => ({ ...prev, ...newInvoiceMap }));
-        setFolders((prev) => ({
-          ...prev,
-          [selectedFolderId]: {
-            ...prev[selectedFolderId],
-            invoiceIds: [...prev[selectedFolderId].invoiceIds, ...newInvoiceIds],
-          },
-        }));
-
-        setUploading(false);
+      try {
+        const res = await apiClient.post<{
+          ids: string[];
+          files: { id: string; filename: string }[];
+        }>('/api/invoices/upload', formData);
+        // After upload, refresh the tree from backend so folders/invoices reflect reality
+        await loadTree();
         setUploadDialogOpen(false);
-      }, 2000);
+      } catch (err: unknown) {
+        const message =
+          (err as { response?: { data?: { error?: string }; status?: number } })?.response?.data?.error ??
+          (err as Error)?.message ??
+          'Upload failed';
+        setUploadError(message);
+      } finally {
+        setUploading(false);
+      }
     },
-    [selectedFolderId]
+    [loadTree]
   );
 
   // Get item info for dialogs
   const getDeleteItemInfo = () => {
-    if (!deleteDialog) return { name: '', hasChildren: false };
+    if (!deleteDialog) return { name: '', hasChildren: false, names: [] as string[] };
     if (deleteDialog.type === 'folder') {
       const folder = folders[deleteDialog.id];
       return {
         name: folder?.name || '',
         hasChildren: (folder?.children.length || 0) > 0 || (folder?.invoiceIds.length || 0) > 0,
+        names: [] as string[],
+      };
+    }
+    // Invoice delete: support both single and bulk modes
+    if (deleteDialog.id === '__bulk__') {
+      const ids = Array.from(selectedInvoices);
+      const names =
+        ids
+          .map((id) => invoices[id]?.fileName)
+          .filter((n): n is string => Boolean(n)) || [];
+      return {
+        name: `${names.length} invoices`,
+        hasChildren: false,
+        names,
       };
     }
     const invoice = invoices[deleteDialog.id];
-    return { name: invoice?.fileName || '', hasChildren: false };
+    return {
+      name: invoice?.fileName || '',
+      hasChildren: false,
+      names: invoice?.fileName ? [invoice.fileName] : [],
+    };
   };
 
   const getMoveItemInfo = () => {
-    if (!moveDialog) return { name: '', currentFolderId: 'root' };
+    if (!moveDialog) return { name: '', currentFolderId: 'root', names: [] as string[] };
     if (moveDialog.type === 'folder') {
       const folder = folders[moveDialog.id];
-      return { name: folder?.name || '', currentFolderId: folder?.parentId || 'root' };
+      return { name: folder?.name || '', currentFolderId: folder?.parentId || 'root', names: [] as string[] };
+    }
+    // Invoice move: support both single and bulk modes
+    if (moveDialog.id === '__bulk__') {
+      const ids = Array.from(selectedInvoices);
+      const invoicesToMove = ids.map((id) => invoices[id]).filter(Boolean);
+      const names = invoicesToMove.map((inv) => inv.fileName);
+      const first = invoicesToMove[0];
+      return {
+        name: first?.fileName || '',
+        currentFolderId: first?.folderId || 'root',
+        names,
+      };
     }
     const invoice = invoices[moveDialog.id];
-    return { name: invoice?.fileName || '', currentFolderId: invoice?.folderId || 'root' };
+    return {
+      name: invoice?.fileName || '',
+      currentFolderId: invoice?.folderId || 'root',
+      names: invoice?.fileName ? [invoice.fileName] : [],
+    };
   };
 
   const deleteItemInfo = getDeleteItemInfo();
@@ -492,7 +604,17 @@ const Invoices: React.FC = () => {
             </Button>
           </Box>
 
-          {/* Search and bulk actions */}
+          {actionError && (
+            <Alert
+              severity="error"
+              sx={{ mb: 2 }}
+              onClose={() => setActionError(null)}
+            >
+              {actionError}
+            </Alert>
+          )}
+
+          {/* Search, filters, and bulk actions */}
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             <TextField
               placeholder={t('invoices.searchPlaceholder')}
@@ -509,6 +631,92 @@ const Invoices: React.FC = () => {
               }}
             />
 
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<FilterListIcon />}
+              onClick={handleOpenFilterMenu}
+            >
+              {t('invoices.filters')}
+            </Button>
+
+            <Menu
+              anchorEl={filterAnchorEl}
+              open={filterMenuOpen}
+              onClose={handleCloseFilterMenu}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+            >
+              <Box sx={{ p: 2, width: 320, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Typography variant="subtitle2">{t('invoices.filterTitle')}</Typography>
+
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <TextField
+                    label={t('invoices.dateFrom')}
+                    type="date"
+                    size="small"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    fullWidth
+                  />
+                  <TextField
+                    label={t('invoices.dateTo')}
+                    type="date"
+                    size="small"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    fullWidth
+                  />
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <TextField
+                    label={t('invoices.amountMin')}
+                    type="number"
+                    size="small"
+                    value={amountMin}
+                    onChange={(e) => setAmountMin(e.target.value)}
+                    fullWidth
+                  />
+                  <TextField
+                    label={t('invoices.amountMax')}
+                    type="number"
+                    size="small"
+                    value={amountMax}
+                    onChange={(e) => setAmountMax(e.target.value)}
+                    fullWidth
+                  />
+                </Box>
+
+                <TextField
+                  select
+                  label={t('invoices.status')}
+                  size="small"
+                  value={statusFilter}
+                  onChange={(e) =>
+                    setStatusFilter(e.target.value as 'all' | FolderInvoice['status'])
+                  }
+                  fullWidth
+                >
+                  <MenuItem value="all">{t('invoices.statusAll')}</MenuItem>
+                  <MenuItem value="pending">{t('invoiceList.pending')}</MenuItem>
+                  <MenuItem value="needs_review">{t('invoiceList.needsReview')}</MenuItem>
+                  <MenuItem value="approved">{t('invoiceList.approved')}</MenuItem>
+                </TextField>
+
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                  <Button size="small" onClick={handleClearFilters}>
+                    {t('common.clear')}
+                  </Button>
+                  <Button size="small" onClick={handleCloseFilterMenu}>
+                    {t('common.close')}
+                  </Button>
+                </Box>
+              </Box>
+            </Menu>
+
             {selectedInvoices.size > 0 && (
               <Toolbar
                 variant="dense"
@@ -523,9 +731,9 @@ const Invoices: React.FC = () => {
                   {t('invoices.selectedCount', { count: selectedInvoices.size })}
                 </Typography>
                 <Tooltip title={t('invoices.moveSelected')}>
-                  <IconButton size="small">
-                    <MoveIcon fontSize="small" />
-                  </IconButton>
+                    <IconButton size="small" onClick={handleBulkMove}>
+                      <MoveIcon fontSize="small" />
+                    </IconButton>
                 </Tooltip>
                 <Tooltip title={t('invoices.deleteSelected')}>
                   <IconButton size="small" color="error" onClick={handleBulkDelete}>
@@ -573,6 +781,7 @@ const Invoices: React.FC = () => {
         open={deleteDialog !== null}
         itemType={deleteDialog?.type || 'folder'}
         itemName={deleteItemInfo.name}
+        itemNames={deleteItemInfo.names}
         hasChildren={deleteItemInfo.hasChildren}
         onClose={() => setDeleteDialog(null)}
         onConfirm={deleteDialog?.type === 'folder' ? handleConfirmDeleteFolder : handleConfirmDeleteInvoice}
@@ -582,6 +791,7 @@ const Invoices: React.FC = () => {
         open={moveDialog !== null}
         itemType={moveDialog?.type || 'folder'}
         itemName={moveItemInfo.name}
+        itemNames={moveItemInfo.names}
         itemId={moveDialog?.id || ''}
         folders={folders}
         currentFolderId={moveItemInfo.currentFolderId}
@@ -592,12 +802,22 @@ const Invoices: React.FC = () => {
       {/* Upload Dialog */}
       <Dialog
         open={uploadDialogOpen}
-        onClose={() => !uploading && setUploadDialogOpen(false)}
+        onClose={() => {
+          if (!uploading) {
+            setUploadError(null);
+            setUploadDialogOpen(false);
+          }
+        }}
         maxWidth="sm"
         fullWidth
       >
         <DialogTitle>{t('invoices.uploadInvoices')}</DialogTitle>
         <DialogContent>
+          {uploadError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setUploadError(null)}>
+              {uploadError}
+            </Alert>
+          )}
           {uploading ? (
             <Box sx={{ py: 4, textAlign: 'center' }}>
               <LinearProgress sx={{ mb: 2 }} />

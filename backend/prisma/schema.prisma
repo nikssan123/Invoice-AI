@@ -9,25 +9,27 @@ datasource db {
 }
 
 model Organization {
-  id               String        @id @default(uuid())
-  name             String        @unique
-  invitationLimit  Int?
-  createdAt        DateTime      @default(now())
-  users            User[]
-  invitations      Invitation[]
+  id              String       @id @default(uuid())
+  name            String       @unique
+  invitationLimit Int?
+  createdAt       DateTime     @default(now())
+  users           User[]
+  invitations     Invitation[]
+  Folder          Folder[]
+  activities      Activity[]
 
   @@index([name])
 }
 
 model User {
-  id                   String    @id @default(uuid())
-  email                String    @unique
+  id                   String       @id @default(uuid())
+  email                String       @unique
   passwordHash         String
   name                 String?
-  role                 String    @default("member") // admin | member
+  role                 String       @default("member") // admin | member
   organizationId       String
   organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt            DateTime  @default(now())
+  createdAt            DateTime     @default(now())
   passwordResetToken   String?
   passwordResetExpires DateTime?
   invoices             Invoice[]
@@ -66,25 +68,53 @@ model Invoice {
   user      User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   fields    InvoiceFields?
   approvals Approval[]
+  folderId  String?
+  folder    Folder?        @relation(fields: [folderId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([userId])
+  @@index([folderId])
 }
 
 model InvoiceFields {
-  id                String    @id @default(uuid())
-  invoiceId         String    @unique
-  invoice           Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  supplierName      String?
-  supplierVatNumber String?
-  invoiceNumber     String?
-  invoiceDate       String?
-  currency          String?
-  netAmount         Decimal?  @db.Decimal(12, 2)
-  vatAmount         Decimal?  @db.Decimal(12, 2)
-  totalAmount       Decimal?  @db.Decimal(12, 2)
-  confidenceScores  Json?
-  extractedAt       DateTime?
+  id                  String    @id @default(uuid())
+  invoiceId           String    @unique
+  invoice             Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  supplierName        String?
+  supplierVatNumber   String?
+  supplierAddress     String?
+  supplierEIK         String?
+  clientName          String?
+  clientEIK           String?
+  clientVatNumber     String?
+  invoiceNumber       String?
+  invoiceDate         String?
+  serviceDescription  String?
+  quantity            String?
+  unitPrice           Decimal?  @db.Decimal(12, 2)
+  serviceTotal        Decimal?  @db.Decimal(12, 2)
+  accountingAccount   String?
+  currency            String?
+  netAmount           Decimal?  @db.Decimal(12, 2)
+  vatAmount           Decimal?  @db.Decimal(12, 2)
+  totalAmount         Decimal?  @db.Decimal(12, 2)
+  confidenceScores    Json?
+  extractedAt         DateTime?
+}
+
+model Folder {
+  id             String       @id @default(uuid())
+  name           String
+  parentId       String?
+  parent         Folder?      @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children       Folder[]     @relation("FolderHierarchy")
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  invoices       Invoice[]
+
+  @@unique([organizationId, parentId, name])
+  @@index([organizationId, parentId])
 }
 
 model Approval {
@@ -96,4 +126,20 @@ model Approval {
   action     String // approved | needs_review
 
   @@index([invoiceId])
+}
+
+model Activity {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  userName       String?
+  actionType     String
+  entityType     String
+  entityId       String?
+  entityName     String?
+  metadata       Json?
+  timestamp      DateTime     @default(now())
+
+  @@index([organizationId, timestamp])
 }

@@ -9,6 +9,14 @@ export const apiClient = axios.create({
   },
 });
 
+// Let the browser set Content-Type (with boundary) for FormData
+apiClient.interceptors.request.use((config) => {
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  }
+  return config;
+});
+
 export function setAuthToken(token: string | null): void {
   if (token) {
     apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;

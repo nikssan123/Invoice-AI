@@ -4,6 +4,8 @@ import swaggerUi from "swagger-ui-express";
 import { config } from "./config.js";
 import { requireAuth } from "./middleware/auth.js";
 import authRoutes from "./routes/auth.js";
+import activityRoutes from "./routes/activities.js";
+import folderRoutes from "./routes/folders.js";
 import invoiceRoutes from "./routes/invoices.js";
 import organizationRoutes from "./routes/organizations.js";
 import { swaggerSpec } from "./swagger.js";
@@ -14,6 +16,8 @@ app.use(cors({ origin: true }));
 app.use(express.json());
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use("/api/auth", authRoutes);
+app.use("/api/activities", requireAuth, activityRoutes);
+app.use("/api/folders", requireAuth, folderRoutes);
 app.use("/api/invoices", requireAuth, invoiceRoutes);
 app.use("/api/organizations", requireAuth, organizationRoutes);
 
@@ -33,11 +37,11 @@ app.use("/api/organizations", requireAuth, organizationRoutes);
  *             schema:
  *               type: object
  *               properties:
- *                 ok:
- *                   type: boolean
- *                   example: true
+ *                 status:
+ *                   type: string
+ *                   example: ok
  */
-app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 app.listen(config.port, () => {
   console.log(`Invoice API running at http://localhost:${config.port}`);
