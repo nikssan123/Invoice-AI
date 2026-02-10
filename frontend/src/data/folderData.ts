@@ -21,6 +21,7 @@ export interface FolderInvoice {
   status: 'pending' | 'needs_review' | 'approved';
   uploadedAt: string;
   folderId: string;
+  extractedAt?: string | null;
   confidenceScores: {
     supplierName: number;
     vatNumber: number;

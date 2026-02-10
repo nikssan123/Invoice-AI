@@ -22,10 +22,12 @@ CONF_NOT_FOUND = 0.0
 
 
 def normalize_text(text: str) -> str:
-    """Lowercase and normalize whitespace (single spaces, strip)."""
+    """Lowercase and normalize whitespace per line; newlines preserved for structure."""
     if not text:
         return ""
-    return re.sub(r"\s+", " ", text.strip()).lower()
+    lines = text.split("\n")
+    normalized = [re.sub(r"\s+", " ", line.strip()).strip() for line in lines]
+    return "\n".join(normalized).lower()
 
 
 def _parse_decimal(s: Optional[str]) -> Optional[float]:

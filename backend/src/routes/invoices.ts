@@ -6,9 +6,15 @@ import type { Prisma } from "@prisma/client";
 import prisma from "../db/index.js";
 import { upload, getUploadPath } from "../middleware/upload.js";
 import { extractInvoice } from "../services/extractionService.js";
-import { ensureFolderForInvoice } from "../services/folderService.js";
 import { logActivity } from "../services/activityLogger.js";
 import { config } from "../config.js";
+import ExcelJS from "exceljs";
+import {
+  EXPORT_COLUMNS,
+  mergeExportColumnLabels,
+  type ExportColumnKey,
+  type ExportColumnLabelsOverride,
+} from "../services/exportColumns.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
@@ -212,22 +218,6 @@ async function extractAndPersistInvoiceForUser(
 
   const extracted = await extractInvoice(invoiceId, fullPath, invoice.mimeType);
   const now = new Date();
-
-  // Assign folder based on extracted supplier and invoice date
-  const organizationId = req.user?.organizationId;
-  if (organizationId) {
-    const folderId = await ensureFolderForInvoice({
-      organizationId,
-      supplierName: extracted.supplierName,
-      invoiceDate: extracted.invoiceDate,
-    });
-    if (folderId) {
-      await prisma.invoice.update({
-        where: { id: invoiceId },
-        data: { folderId } as Prisma.InvoiceUpdateInput,
-      });
-    }
-  }
 
   const fieldsCreate = {
     invoiceId,
@@ -487,6 +477,7 @@ router.get("/tree", async (req: Request, res: Response) => {
         uploadedAt: inv.createdAt.toISOString(),
         folderId,
         confidenceScores: (fields?.confidenceScores as Record<string, number> | null) ?? zeroScores,
+        extractedAt: fields?.extractedAt ? fields.extractedAt.toISOString() : null,
       };
 
       if (foldersById[folderId]) {
@@ -1141,6 +1132,405 @@ router.post("/:id/approve", async (req: Request, res: Response) => {
   } catch (err) {
     const prismaErr = err as { code?: string };
     if (prismaErr.code === "P2025") return res.status(404).json({ error: "Invoice not found" });
+    console.error(err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+type ExportColumnConfigResponse = {
+  key: ExportColumnKey;
+  defaultLabel: string;
+  currentLabel: string;
+};
+
+/**
+ * @openapi
+ * /api/invoices/config/export:
+ *   get:
+ *     summary: Get Excel export column configuration for the current user
+ *     tags:
+ *       - Invoices
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of columns with default and current labels
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get("/config/export", async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const user = (await prisma.user.findUnique({
+      where: { id: userId },
+    })) as unknown as { excelExportColumnLabels?: unknown } | null;
+
+    const overrides = (user?.excelExportColumnLabels ?? null) as ExportColumnLabelsOverride | null;
+    const hasConfig =
+      overrides != null &&
+      typeof overrides === "object" &&
+      Object.keys(overrides as Record<string, unknown>).length > 0;
+    const labels: ExportColumnConfigResponse[] = EXPORT_COLUMNS.map((col) => {
+      const raw = overrides?.[col.key];
+      const trimmed = typeof raw === "string" ? raw.trim() : "";
+      return {
+        key: col.key,
+        defaultLabel: col.defaultLabel,
+        currentLabel: trimmed.length > 0 ? trimmed : col.defaultLabel,
+      };
+    });
+
+    res.json({ columns: labels, hasConfig });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+/**
+ * @openapi
+ * /api/invoices/config/export:
+ *   put:
+ *     summary: Update Excel export column labels for the current user
+ *     tags:
+ *       - Invoices
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               labels:
+ *                 type: object
+ *                 additionalProperties:
+ *                   type: string
+ *                 description: Map of column key to label
+ *     responses:
+ *       200:
+ *         description: Configuration saved
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.put("/config/export", async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const body = req.body as { labels?: Record<string, unknown> };
+    const rawLabels = body.labels;
+    if (!rawLabels || typeof rawLabels !== "object") {
+      return res.status(400).json({ error: "labels object is required" });
+    }
+
+    const allowedKeys = new Set<ExportColumnKey>(EXPORT_COLUMNS.map((c) => c.key));
+    const sanitized: ExportColumnLabelsOverride = {};
+
+    for (const [key, value] of Object.entries(rawLabels)) {
+      if (!allowedKeys.has(key as ExportColumnKey)) continue;
+      if (typeof value !== "string") continue;
+      const trimmed = value.trim();
+      if (trimmed.length === 0) continue;
+      sanitized[key as ExportColumnKey] = trimmed;
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        excelExportColumnLabels: sanitized as unknown as Prisma.JsonValue,
+      } as Prisma.UserUpdateInput,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+type ExportScope = "selected" | "folder";
+
+type ExportRequestBody =
+  | {
+      scope: "selected";
+      invoiceIds: string[];
+      onlyConfirmed?: boolean;
+    }
+  | {
+      scope: "folder";
+      folderIds: string[];
+      includeSubfolders?: boolean;
+      onlyConfirmed?: boolean;
+    };
+
+/**
+ * @openapi
+ * /api/invoices/export:
+ *   post:
+ *     summary: Export approved invoices with extracted data to Excel
+ *     description: |
+ *       Generates an Excel file (.xlsx) from confirmed invoices (status=approved) that have
+ *       extracted fields. You can export either a specific selection of invoices or all
+ *       invoices in one or more folders.
+ *     tags:
+ *       - Invoices
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             oneOf:
+ *               - type: object
+ *                 properties:
+ *                   scope:
+ *                     type: string
+ *                     enum: [selected]
+ *                   invoiceIds:
+ *                     type: array
+ *                     items: { type: string }
+ *                   onlyConfirmed:
+ *                     type: boolean
+ *                     description: "When true, only approved invoices are exported (default: true)"
+ *                 required: [scope, invoiceIds]
+ *               - type: object
+ *                 properties:
+ *                   scope:
+ *                     type: string
+ *                     enum: [folder]
+ *                   folderIds:
+ *                     type: array
+ *                     items: { type: string }
+ *                   includeSubfolders:
+ *                     type: boolean
+ *                     description: Whether to include invoices from descendant folders
+ *                   onlyConfirmed:
+ *                     type: boolean
+ *                     description: "When true, only approved invoices are exported (default: true)"
+ *                 required: [scope, folderIds]
+ *     responses:
+ *       200:
+ *         description: Excel file containing exported invoices
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: Invalid input or no invoices to export
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.post("/export", async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organizationId;
+    const userId = req.user?.id;
+    if (!orgId || !userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const body = req.body as ExportRequestBody;
+    const scope = body.scope as ExportScope | undefined;
+
+    if (!scope || (scope !== "selected" && scope !== "folder")) {
+      return res.status(400).json({ error: "scope must be 'selected' or 'folder'" });
+    }
+
+    const onlyConfirmed = body.onlyConfirmed !== false;
+
+    let candidateInvoiceIds: string[] = [];
+
+    if (scope === "selected") {
+      const selectedBody = body as Extract<ExportRequestBody, { scope: "selected" }>;
+      const invoiceIds = Array.isArray(selectedBody.invoiceIds)
+        ? selectedBody.invoiceIds.filter(Boolean)
+        : [];
+      if (invoiceIds.length === 0) {
+        return res.status(400).json({ error: "invoiceIds must be a non-empty array" });
+      }
+      candidateInvoiceIds = Array.from(new Set(invoiceIds));
+    } else {
+      const folderBody = body as Extract<ExportRequestBody, { scope: "folder" }>;
+      const folderIds = Array.isArray(folderBody.folderIds)
+        ? folderBody.folderIds.filter(Boolean)
+        : [];
+      if (folderIds.length === 0) {
+        return res.status(400).json({ error: "folderIds must be a non-empty array" });
+      }
+
+      const includeSubfolders = folderBody.includeSubfolders !== false;
+
+      // Load all folders for the organization so we can resolve descendants
+      const dbFolders = await prisma.folder.findMany({
+        where: { organizationId: orgId },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const childrenByParent: Record<string, string[]> = {};
+      for (const f of dbFolders) {
+        const parentId = f.parentId ?? "root";
+        if (!childrenByParent[parentId]) childrenByParent[parentId] = [];
+        childrenByParent[parentId].push(f.id);
+      }
+
+      const resolvedFolderIds = new Set<string>();
+      let includeRootInvoices = false;
+
+      const addFolderWithDescendants = (startId: string) => {
+        if (startId === "root") {
+          includeRootInvoices = true;
+          if (!includeSubfolders) {
+            return;
+          }
+          // For root + subfolders, include all real folders below root
+          Object.assign(
+            resolvedFolderIds,
+            dbFolders.reduce((acc, f) => {
+              acc[f.id] = true;
+              return acc;
+            }, {} as Record<string, boolean>)
+          );
+          return;
+        }
+
+        const stack: string[] = [startId];
+        while (stack.length > 0) {
+          const current = stack.pop() as string;
+          if (resolvedFolderIds.has(current)) continue;
+          resolvedFolderIds.add(current);
+          if (includeSubfolders && childrenByParent[current]) {
+            for (const childId of childrenByParent[current]) {
+              if (!resolvedFolderIds.has(childId)) {
+                stack.push(childId);
+              }
+            }
+          }
+        }
+      };
+
+      for (const id of folderIds) {
+        addFolderWithDescendants(id);
+      }
+
+      const folderIdList = Array.from(resolvedFolderIds);
+
+      const whereFolder: Prisma.InvoiceWhereInput = {
+        ...(includeRootInvoices
+          ? {
+              OR: [
+                { folderId: null },
+                ...(folderIdList.length > 0 ? [{ folderId: { in: folderIdList } }] : []),
+              ],
+            }
+          : folderIdList.length > 0
+          ? { folderId: { in: folderIdList } }
+          : { folderId: null }),
+        userId,
+      };
+
+      const invoicesInFolders = await prisma.invoice.findMany({
+        where: whereFolder,
+        select: { id: true },
+      });
+      candidateInvoiceIds = invoicesInFolders.map((inv) => inv.id);
+    }
+
+    if (candidateInvoiceIds.length === 0) {
+      return res.status(400).json({ error: "No invoices found for export" });
+    }
+
+    const where: Prisma.InvoiceWhereInput = {
+      id: { in: candidateInvoiceIds },
+      ...(onlyConfirmed ? { status: "approved" } : {}),
+      userId,
+    };
+
+    const invoicesForExport = await prisma.invoice.findMany({
+      where,
+      include: { fields: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const filtered = invoicesForExport.filter((inv) => inv.fields && inv.fields.extractedAt);
+
+    if (filtered.length === 0) {
+      return res.status(400).json({
+        error: "There are no invoices to export. Only approved invoices with completed data extraction can be exported.",
+      });
+    }
+
+    const user = (await prisma.user.findUnique({
+      where: { id: userId },
+    })) as unknown as { excelExportColumnLabels?: unknown } | null;
+    const overrides = (user?.excelExportColumnLabels ?? null) as ExportColumnLabelsOverride | null;
+    const mergedColumns = mergeExportColumnLabels(overrides);
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Invoices");
+
+    worksheet.columns = mergedColumns.map((col) => ({
+      header: col.header,
+      key: col.key,
+      width: col.width,
+    }));
+
+    worksheet.getRow(1).font = { bold: true };
+
+    for (const inv of filtered) {
+      const f = inv.fields as unknown as FieldsRow | null;
+      worksheet.addRow({
+        id: inv.id,
+        fileName: inv.filename,
+        invoiceNumber: f?.invoiceNumber ?? null,
+        invoiceDate: f?.invoiceDate ?? null,
+        supplierName: f?.supplierName ?? null,
+        supplierVatNumber: f?.supplierVatNumber ?? null,
+        supplierAddress: f?.supplierAddress ?? null,
+        supplierEIK: f?.supplierEIK ?? null,
+        clientName: f?.clientName ?? null,
+        clientEIK: f?.clientEIK ?? null,
+        clientVatNumber: f?.clientVatNumber ?? null,
+        currency: f?.currency ?? null,
+        netAmount: f?.netAmount != null ? Number(f.netAmount) : null,
+        vatAmount: f?.vatAmount != null ? Number(f.vatAmount) : null,
+        totalAmount: f?.totalAmount != null ? Number(f.totalAmount) : null,
+        status: inv.status,
+        extractedAt: f?.extractedAt ? f.extractedAt.toISOString() : null,
+        uploadedAt: inv.createdAt.toISOString(),
+      });
+    }
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="invoices-${dateStr}.xlsx"`
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
     console.error(err);
     res.status(500).json({ error: (err as Error).message });
   }

@@ -16,6 +16,7 @@ import {
   ListItemIcon,
   ListItemText,
   Paper,
+  Tooltip,
 } from '@mui/material';
 import {
   MoreVert as MoreIcon,
@@ -64,9 +65,13 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
     setMenuInvoiceId(null);
   };
 
-  const handleViewInvoice = (invoiceId: string) => {
-    navigate(`/invoices/${invoiceId}`);
+  const handleViewInvoice = (invoice: FolderInvoice) => {
+    if (invoice.extractedAt == null) return;
+    navigate(`/invoices/${invoice.id}`);
   };
+
+  const menuInvoice = menuInvoiceId ? invoices.find((inv) => inv.id === menuInvoiceId) : null;
+  const canOpenMenuInvoice = menuInvoice != null && menuInvoice.extractedAt != null;
 
   const getStatusChip = (status: FolderInvoice['status']) => {
     const config = {
@@ -198,73 +203,86 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
               </TableRow>
             </TableHead>
             <TableBody>
-              {invoices.map((invoice) => (
-                <TableRow
-                  key={invoice.id}
-                  hover
-                  sx={{ cursor: 'pointer' }}
-                  onClick={() => handleViewInvoice(invoice.id)}
-                >
-                  <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={selectedInvoices.has(invoice.id)}
-                      onChange={(e) => onSelectInvoice(invoice.id, e.target.checked)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Box
-                        sx={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 1,
-                          bgcolor: 'grey.100',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
+              {invoices.map((invoice) => {
+                const canOpen = invoice.extractedAt != null;
+                const extractingLabel = (
+                  <Tooltip title={t('invoiceList.extractionInProgress')} placement="top">
+                    <span>{t('invoiceList.extracting')}</span>
+                  </Tooltip>
+                );
+                return (
+                  <TableRow
+                    key={invoice.id}
+                    hover={canOpen}
+                    sx={{
+                      cursor: canOpen ? 'pointer' : 'not-allowed',
+                      opacity: canOpen ? 1 : 0.85,
+                    }}
+                    onClick={() => handleViewInvoice(invoice)}
+                  >
+                    <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedInvoices.has(invoice.id)}
+                        onChange={(e) => onSelectInvoice(invoice.id, e.target.checked)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Box
+                          sx={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 1,
+                            bgcolor: 'grey.100',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <DocIcon color="action" />
+                        </Box>
+                        <Box>
+                          <Typography variant="subtitle2">
+                            {invoice.extractedAt != null
+                              ? (invoice.invoiceNumber || '—')
+                              : extractingLabel}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {invoice.fileName}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{invoice.supplierName}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {invoice.vatNumber}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {formatDate(invoice.invoiceDate)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="subtitle2" fontWeight={600}>
+                        {formatCurrency(invoice.totalAmount, invoice.currency)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      {getStatusChip(invoice.status)}
+                    </TableCell>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => handleMenuOpen(e, invoice.id)}
                       >
-                        <DocIcon color="action" />
-                      </Box>
-                      <Box>
-                        <Typography variant="subtitle2">
-                          {invoice.invoiceNumber || 'Processing...'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {invoice.fileName}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">{invoice.supplierName}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {invoice.vatNumber}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">
-                      {formatDate(invoice.invoiceDate)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography variant="subtitle2" fontWeight={600}>
-                      {formatCurrency(invoice.totalAmount, invoice.currency)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    {getStatusChip(invoice.status)}
-                  </TableCell>
-                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => handleMenuOpen(e, invoice.id)}
-                    >
-                      <MoreIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
+                        <MoreIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
@@ -276,15 +294,19 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
         onClose={handleMenuClose}
       >
         <MenuItem
+          disabled={!canOpenMenuInvoice}
           onClick={() => {
-            if (menuInvoiceId) handleViewInvoice(menuInvoiceId);
+            if (menuInvoice) handleViewInvoice(menuInvoice);
             handleMenuClose();
           }}
         >
           <ListItemIcon>
             <ViewIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Open</ListItemText>
+          <ListItemText
+            primary="Open"
+            secondary={!canOpenMenuInvoice ? t('invoiceList.openAvailableAfterExtraction') : undefined}
+          />
         </MenuItem>
         <MenuItem
           onClick={() => {

@@ -35,6 +35,44 @@ def _normalize_whitespace(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _parse_box(segment: tuple) -> tuple[float, float, float, float] | None:
+    """
+    Parse segment [box, (text, conf)] to (min_x, min_y, max_x, max_y).
+    Returns None if box is missing or invalid. Handles list/ndarray points.
+    """
+    if not segment or len(segment) < 1:
+        return None
+    box = segment[0]
+    if box is None or not isinstance(box, (list, tuple, np.ndarray)) or len(box) == 0:
+        return None
+    xs, ys = [], []
+    for p in box:
+        if isinstance(p, (list, tuple, np.ndarray)) and len(p) >= 2:
+            try:
+                xs.append(float(p[0]))
+                ys.append(float(p[1]))
+            except (TypeError, ValueError):
+                pass
+    if not xs or not ys:
+        return None
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _segment_geometry(segment: tuple) -> tuple[float, float, float] | None:
+    """
+    For a segment [box, (text, conf)], return (center_x, center_y, height).
+    Used for line grouping and ordering. Returns None if box invalid.
+    """
+    b = _parse_box(segment)
+    if b is None:
+        return None
+    min_x, min_y, max_x, max_y = b
+    center_x = (min_x + max_x) / 2
+    center_y = (min_y + max_y) / 2
+    height = max_y - min_y
+    return (center_x, center_y, height)
+
+
 def _sort_by_reading_order(lines: list) -> list:
     """
     Sort OCR lines by reading order (top-to-bottom, left-to-right).
@@ -43,24 +81,11 @@ def _sort_by_reading_order(lines: list) -> list:
     Use top-left y then x for ordering. Defensive for PaddleOCR 3.x result shape variations.
     """
     def sort_key(item: tuple) -> tuple[float, float]:
-        box = item[0] if len(item) > 0 else None
-        if box is None:
+        b = _parse_box(item)
+        if b is None:
             return (0.0, 0.0)
-        if not isinstance(box, (list, tuple, np.ndarray)):
-            return (0.0, 0.0)
-        if len(box) == 0:
-            return (0.0, 0.0)
-        xs, ys = [], []
-        for p in box:
-            if isinstance(p, (list, tuple, np.ndarray)) and len(p) >= 2:
-                try:
-                    xs.append(float(p[0]))
-                    ys.append(float(p[1]))
-                except (TypeError, ValueError):
-                    pass
-        if not xs or not ys:
-            return (0.0, 0.0)
-        return (min(ys), min(xs))
+        min_x, min_y, max_x, max_y = b
+        return (min_y, min_x)
 
     return sorted(lines, key=sort_key)
 
@@ -84,6 +109,57 @@ def _result_dict_to_lines(d: dict) -> list:
     return lines
 
 
+def _group_into_lines(segments: list) -> list[list]:
+    """
+    Group segments into logical lines by similar y-coordinate.
+    Each segment is [box, (text, conf)]. Returns list of lines, each line a list of segments.
+    Defensive: invalid/missing boxes are still included (e.g. in current line).
+    """
+    if not segments:
+        return []
+    # (center_x, center_y, height) per segment; None if invalid
+    geoms = []
+    for seg in segments:
+        g = _segment_geometry(seg)
+        geoms.append(g)
+    heights = [g[2] for g in geoms if g is not None]
+    line_height = float(max(np.median(heights), 5.0)) if heights else 10.0
+    y_threshold = 0.4 * line_height
+    # Sort by (center_y, center_x)
+    def sort_key(i: int) -> tuple[float, float]:
+        g = geoms[i]
+        if g is None:
+            return (0.0, 0.0)
+        return (geoms[i][1], geoms[i][0])
+    indices = sorted(range(len(segments)), key=sort_key)
+    lines: list[list] = []
+    current_line: list = []
+    current_y: float | None = None
+    for i in indices:
+        seg = segments[i]
+        g = geoms[i]
+        if g is None:
+            if current_line:
+                current_line.append(seg)
+            else:
+                lines.append([seg])
+                current_y = None
+            continue
+        cy = g[1]
+        if current_y is None or abs(cy - current_y) <= y_threshold:
+            current_line.append(seg)
+            if current_y is None:
+                current_y = cy
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = [seg]
+            current_y = cy
+    if current_line:
+        lines.append(current_line)
+    return lines
+
+
 def extract_text_from_image(image: Image.Image) -> str:
     """
     Extract plain text from a single image using PaddleOCR.
@@ -92,7 +168,8 @@ def extract_text_from_image(image: Image.Image) -> str:
         image: PIL Image to process.
 
     Returns:
-        Extracted text with normalized whitespace, in reading order.
+        Extracted text in reading order, one line per visual line (newlines preserved);
+        spaces normalized within each line.
     """
     logger.info("Extracting text from image")
     engine = _get_ocr_engine()
@@ -135,15 +212,28 @@ def extract_text_from_image(image: Image.Image) -> str:
     # #endregion
 
     sorted_lines = _sort_by_reading_order(lines)
-    texts = []
-    for line in sorted_lines:
-        if len(line) < 2:
-            continue
-        part = line[1]
-        if isinstance(part, str):
-            texts.append(part)
-        elif part and (isinstance(part, (list, tuple)) and len(part) > 0):
-            texts.append(part[0] if isinstance(part[0], str) else str(part[0]))
-    combined = " ".join(texts)
 
-    return _normalize_whitespace(combined)
+    def _segment_text(seg):
+        if len(seg) < 2:
+            return ""
+        part = seg[1]
+        if isinstance(part, str):
+            return part
+        if part and isinstance(part, (list, tuple)) and len(part) > 0:
+            return part[0] if isinstance(part[0], str) else str(part[0])
+        return ""
+
+    try:
+        grouped = _group_into_lines(sorted_lines)
+        if not grouped and sorted_lines:
+            raise ValueError("grouping produced no lines")
+        line_strings = []
+        for line_segments in grouped:
+            parts = [_segment_text(seg) for seg in line_segments]
+            line_strings.append(" ".join(parts))
+        normalized_lines = [_normalize_whitespace(s) for s in line_strings]
+        return "\n".join(normalized_lines)
+    except Exception:
+        logger.debug("Line grouping failed, using flat join", exc_info=True)
+        texts = [_segment_text(line) for line in sorted_lines]
+        return _normalize_whitespace(" ".join(texts))

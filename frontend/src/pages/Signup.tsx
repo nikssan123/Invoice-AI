@@ -248,9 +248,9 @@ const Signup: React.FC = () => {
 
         <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 4 }}>
           {t('login.agreeTerms')}{' '}
-          <Link href="#" sx={{ textDecoration: 'none' }}>{t('login.termsOfService')}</Link>
+          <Link component={RouterLink} to="/terms" sx={{ textDecoration: 'none' }}>{t('login.termsOfService')}</Link>
           {' '}{t('login.and')}{' '}
-          <Link href="#" sx={{ textDecoration: 'none' }}>{t('login.privacyPolicy')}</Link>
+          <Link component={RouterLink} to="/privacy" sx={{ textDecoration: 'none' }}>{t('login.privacyPolicy')}</Link>
         </Typography>
       </Container>
     </Box>

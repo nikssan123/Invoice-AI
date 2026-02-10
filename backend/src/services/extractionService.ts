@@ -96,26 +96,19 @@ function isRetryableNetworkError(err: unknown): boolean {
   return code === "ECONNRESET" || code === "ECONNREFUSED" || code === "ETIMEDOUT" || code === "ENOTFOUND";
 }
 
-export async function extractInvoice(
-  invoiceId: string,
-  fullPath: string,
-  mimeType: string
-): Promise<ExtractedFields> {
-  const ocrBase = getOcrBaseUrl();
-  const filename = path.basename(fullPath);
+const emptyScores: Record<string, number> = {
+  supplierName: 0,
+  supplierVatNumber: 0,
+  invoiceNumber: 0,
+  invoiceDate: 0,
+  currency: 0,
+  netAmount: 0,
+  vatAmount: 0,
+  totalAmount: 0,
+};
 
-  const emptyScores: Record<string, number> = {
-    supplierName: 0,
-    supplierVatNumber: 0,
-    invoiceNumber: 0,
-    invoiceDate: 0,
-    currency: 0,
-    netAmount: 0,
-    vatAmount: 0,
-    totalAmount: 0,
-  };
-
-  const empty: ExtractedFields = {
+function emptyExtractedFields(): ExtractedFields {
+  return {
     supplierName: null,
     supplierVatNumber: null,
     supplierAddress: null,
@@ -136,6 +129,46 @@ export async function extractInvoice(
     totalAmount: null,
     confidenceScores: { ...emptyScores },
   };
+}
+
+/** Map rule-style response (ExtractResponse) to ExtractedFields. Used for both vision and legacy rule-based. */
+function mapRuleResponseToFields(r: OcrExtractRuleResponse): ExtractedFields {
+  const scores = r.confidenceScores ?? {};
+  return {
+    supplierName: r.supplier?.name ?? null,
+    supplierVatNumber: r.supplier?.vat ?? null,
+    supplierAddress: r.supplier?.address ?? null,
+    supplierEIK: r.supplier?.eik ?? null,
+    clientName: r.client?.name ?? null,
+    clientEIK: r.client?.eik ?? null,
+    clientVatNumber: r.client?.vat ?? null,
+    invoiceNumber: r.invoiceNumber ?? null,
+    invoiceDate: r.invoiceDate ?? null,
+    serviceDescription: r.service?.description ?? null,
+    quantity: r.service?.quantity ?? null,
+    unitPrice: r.service?.unitPrice ?? null,
+    serviceTotal: r.service?.total ?? null,
+    accountingAccount: r.accountingAccount ?? null,
+    currency: r.amounts?.currency ?? null,
+    netAmount: r.amounts?.subtotal ?? null,
+    vatAmount: r.amounts?.vat ?? null,
+    totalAmount: r.amounts?.total ?? null,
+    confidenceScores: typeof scores === "object" && scores !== null ? scores : emptyScores,
+  };
+}
+
+/**
+ * Legacy extraction: OCR (PaddleOCR) → rule-based POST /extract-invoice.
+ * Used when vision endpoint is unavailable (503) or fails.
+ */
+export async function extractLegacy(
+  invoiceId: string,
+  fullPath: string,
+  mimeType: string
+): Promise<ExtractedFields> {
+  const ocrBase = getOcrBaseUrl();
+  const filename = path.basename(fullPath);
+  const empty = emptyExtractedFields();
 
   try {
     // 1) Send file to /ocr (retry on connection errors; new FormData/stream per attempt)
@@ -170,85 +203,63 @@ export async function extractInvoice(
     }
 
     const ocrData = ocrRes!.data;
-
-    console.log("ocrData", ocrData);
     if (!ocrData?.pages?.length) {
       return empty;
     }
 
     const ocrText = ocrData.pages.map((p) => p.text).join("\n");
 
-    // 2) Try rule-based POST /extract first; fallback to LLM POST /extract-invoice
     try {
       const ruleRes = await axios.post<OcrExtractRuleResponse>(`${ocrBase}/extract-invoice`, { ocrText }, { timeout: OCR_TIMEOUT_MS });
-      const r = ruleRes.data;
-      const scores = r.confidenceScores ?? {};
-      return {
-        supplierName: r.supplier?.name ?? null,
-        supplierVatNumber: r.supplier?.vat ?? null,
-        supplierAddress: r.supplier?.address ?? null,
-        supplierEIK: r.supplier?.eik ?? null,
-        clientName: r.client?.name ?? null,
-        clientEIK: r.client?.eik ?? null,
-        clientVatNumber: r.client?.vat ?? null,
-        invoiceNumber: r.invoiceNumber ?? null,
-        invoiceDate: r.invoiceDate ?? null,
-        serviceDescription: r.service?.description ?? null,
-        quantity: r.service?.quantity ?? null,
-        unitPrice: r.service?.unitPrice ?? null,
-        serviceTotal: r.service?.total ?? null,
-        accountingAccount: r.accountingAccount ?? null,
-        currency: r.amounts?.currency ?? null,
-        netAmount: r.amounts?.subtotal ?? null,
-        vatAmount: r.amounts?.vat ?? null,
-        totalAmount: r.amounts?.total ?? null,
-        confidenceScores: typeof scores === "object" && scores !== null ? scores : emptyScores,
-      };
+      return mapRuleResponseToFields(ruleRes.data);
     } catch (_ruleErr) {
-      // TODO: implement fallback logic
-      // Fallback: LLM-based /extract-invoice
-      const extractRes = await axios.post<OcrExtractInvoiceResponse>(
-        `${ocrBase}/extract-llm`,
-        { documentId: ocrData.documentId, ocrText },
-        { timeout: OCR_TIMEOUT_MS }
-      );
-      const { fields, confidence } = extractRes.data;
-      const confidenceScores: Record<string, number> = {
-        supplierName: confidence.supplierName ?? 0,
-        supplierVatNumber: 0,
-        invoiceNumber: confidence.invoiceNumber ?? 0,
-        invoiceDate: 0,
-        currency: 0,
-        netAmount: 0,
-        vatAmount: 0,
-        totalAmount: confidence.totalAmount ?? 0,
-      };
-      return {
-        supplierName: fields.supplierName,
-        supplierVatNumber: fields.supplierVat,
-        supplierAddress: null,
-        supplierEIK: null,
-        clientName: null,
-        clientEIK: null,
-        clientVatNumber: null,
-        invoiceNumber: fields.invoiceNumber,
-        invoiceDate: fields.invoiceDate,
-        serviceDescription: null,
-        quantity: null,
-        unitPrice: null,
-        serviceTotal: null,
-        accountingAccount: null,
-        currency: fields.currency,
-        netAmount: fields.netAmount,
-        vatAmount: fields.vatAmount,
-        totalAmount: fields.totalAmount,
-        confidenceScores,
-      };
       return empty;
     }
   } catch (err) {
-    console.error("extractInvoice: OCR/LLM extraction failed for", invoiceId, err);
-    // Fallback to empty structure so API contract is preserved
+    console.error("extractLegacy: OCR/rule extraction failed for", invoiceId, err);
+    return empty;
+  }
+}
+
+/**
+ * Extract invoice fields: tries POST /extract-vision (OpenAI vision + image) first;
+ * on 503/500 or other failure falls back to extractLegacy (OCR + rule-based).
+ */
+export async function extractInvoice(
+  invoiceId: string,
+  fullPath: string,
+  mimeType: string
+): Promise<ExtractedFields> {
+  const ocrBase = getOcrBaseUrl();
+  const filename = path.basename(fullPath);
+  const empty = emptyExtractedFields();
+
+  try {
+    const form = new FormData();
+    form.append("file", fs.createReadStream(fullPath), {
+      filename,
+      contentType: mimeType,
+    });
+    const visionRes = await axios.post<OcrExtractRuleResponse>(`${ocrBase}/extract-vision`, form, {
+      headers: form.getHeaders(),
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+      timeout: OCR_TIMEOUT_MS,
+      validateStatus: (status) => status >= 200 && status < 300,
+    });
+    return mapRuleResponseToFields(visionRes.data);
+  } catch (err) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    const useLegacy =
+      status === 503 ||
+      status === 500 ||
+      status === 400 ||
+      isRetryableNetworkError(err);
+    if (useLegacy) {
+      console.log("extractInvoice: vision unavailable or failed, using legacy extraction for", invoiceId);
+      return extractLegacy(invoiceId, fullPath, mimeType);
+    }
+    console.error("extractInvoice: vision request failed for", invoiceId, err);
     return empty;
   }
 }

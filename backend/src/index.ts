@@ -8,6 +8,7 @@ import activityRoutes from "./routes/activities.js";
 import folderRoutes from "./routes/folders.js";
 import invoiceRoutes from "./routes/invoices.js";
 import organizationRoutes from "./routes/organizations.js";
+import profileRoutes from "./routes/profile.js";
 import { swaggerSpec } from "./swagger.js";
 
 const app = express();
@@ -20,6 +21,7 @@ app.use("/api/activities", requireAuth, activityRoutes);
 app.use("/api/folders", requireAuth, folderRoutes);
 app.use("/api/invoices", requireAuth, invoiceRoutes);
 app.use("/api/organizations", requireAuth, organizationRoutes);
+app.use("/api/profile", requireAuth, profileRoutes);
 
 /**
  * @openapi

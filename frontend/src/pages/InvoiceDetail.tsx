@@ -139,7 +139,6 @@ const defaultFormData = {
   quantity: '',
   unitPrice: 0,
   serviceTotal: 0,
-  accountingAccount: '',
   currency: '',
   netAmount: 0,
   vatAmount: 0,
@@ -160,7 +159,6 @@ const defaultScores: Record<string, number> = {
   quantity: 0,
   unitPrice: 0,
   serviceTotal: 0,
-  accountingAccount: 0,
   currency: 0,
   netAmount: 0,
   vatAmount: 0,
@@ -181,6 +179,7 @@ const InvoiceDetail: React.FC = () => {
   const [chatInput, setChatInput] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [savingFields, setSavingFields] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const [formData, setFormData] = useState(defaultFormData);
@@ -225,7 +224,6 @@ const InvoiceDetail: React.FC = () => {
             quantity: f.service?.quantity ?? '',
             unitPrice: f.service?.unitPrice ?? 0,
             serviceTotal: f.service?.total ?? 0,
-            accountingAccount: f.accountingAccount ?? '',
             currency: f.amounts?.currency ?? f.currency ?? '',
             netAmount: f.amounts?.netAmount ?? f.netAmount ?? 0,
             vatAmount: f.amounts?.vatAmount ?? f.vatAmount ?? 0,
@@ -284,6 +282,7 @@ const InvoiceDetail: React.FC = () => {
 
   const handleApprove = async () => {
     if (!invoice || !id) return;
+    setApproving(true);
     try {
       await apiClient.post('/api/invoices/' + id + '/approve', {
         action: 'approved',
@@ -295,6 +294,8 @@ const InvoiceDetail: React.FC = () => {
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ?? (err as Error)?.message ?? 'Failed to approve';
       setSnackbar({ open: true, message: msg, severity: 'error' });
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -316,7 +317,6 @@ const InvoiceDetail: React.FC = () => {
         quantity: formData.quantity,
         unitPrice: formData.unitPrice,
         serviceTotal: formData.serviceTotal,
-        accountingAccount: formData.accountingAccount,
         currency: formData.currency,
         netAmount: formData.netAmount,
         vatAmount: formData.vatAmount,
@@ -334,14 +334,14 @@ const InvoiceDetail: React.FC = () => {
 
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
-    
+
     const userMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
       role: 'user',
       content: chatInput,
       timestamp: new Date().toISOString(),
     };
-    
+
     setChatMessages(prev => [...prev, userMessage]);
     setChatInput('');
     setIsSending(true);
@@ -457,20 +457,21 @@ const InvoiceDetail: React.FC = () => {
               {isEditing && (
                 <Button
                   variant="outlined"
-                  startIcon={<SaveIcon />}
+                  startIcon={savingFields ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
                   onClick={handleSaveFields}
                   disabled={savingFields}
                 >
-                  {t('common.save')}
+                  {savingFields ? t('invoiceDetail.saving') : t('common.save')}
                 </Button>
               )}
               <Button
                 variant="contained"
                 color="success"
-                startIcon={<ApproveIcon />}
+                startIcon={approving ? <CircularProgress size={18} color="inherit" /> : <ApproveIcon />}
                 onClick={handleApprove}
+                disabled={approving}
               >
-                {t('invoiceDetail.approveInvoice')}
+                {approving ? t('invoiceDetail.approving') : t('invoiceDetail.approveInvoice')}
               </Button>
             </>
           )}
@@ -556,7 +557,7 @@ const InvoiceDetail: React.FC = () => {
 
           {/* Extracted Data Tab */}
           <TabPanel value={tabValue} index={0}>
-            <Box sx={{ p: 3, height: '100%', overflow: 'auto' }}>
+            <Box sx={{ p: 3, pb: 10, height: '100%', overflow: 'auto' }}>
               {isApproved && (
                 <Alert severity="success" sx={{ mb: 3 }}>
                   {t('invoiceDetail.approvedLocked')}
@@ -680,13 +681,6 @@ const InvoiceDetail: React.FC = () => {
                       <ConfidenceIndicator score={getScore(confidenceScores, 'serviceTotal', 'service.total')} lowHighlight />
                     </Box>
                     <TextField fullWidth size="small" type="number" value={formData.serviceTotal} onChange={(e) => setFormData({ ...formData, serviceTotal: parseFloat(e.target.value) || 0 })} disabled={!isEditing || isApproved} InputProps={{ startAdornment: <InputAdornment position="start">{formData.currency}</InputAdornment> }} />
-                  </Box>
-                  <Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.accountingAccount')}</Typography>
-                      <ConfidenceIndicator score={getScore(confidenceScores, 'accountingAccount')} lowHighlight />
-                    </Box>
-                    <TextField fullWidth size="small" value={formData.accountingAccount} onChange={(e) => setFormData({ ...formData, accountingAccount: e.target.value })} disabled={!isEditing || isApproved} />
                   </Box>
                 </Box>
 

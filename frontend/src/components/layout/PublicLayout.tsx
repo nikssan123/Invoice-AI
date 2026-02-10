@@ -6,6 +6,7 @@ import {
   Button,
   Container,
   Box,
+  Link,
   useScrollTrigger,
 } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
@@ -181,9 +182,15 @@ const PublicLayout: React.FC<PublicLayoutProps> = ({ children }) => {
               <Typography variant="subtitle2" sx={{ color: 'white', mb: 1.5, fontWeight: 600 }}>
                 {t('landing.footer.legal')}
               </Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.privacyPolicy')}</Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.termsOfService')}</Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.gdpr')}</Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                <Link component={RouterLink} to="/privacy" sx={{ color: 'inherit', textDecoration: 'none' }}>{t('landing.footer.privacyPolicy')}</Link>
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                <Link component={RouterLink} to="/terms" sx={{ color: 'inherit', textDecoration: 'none' }}>{t('landing.footer.termsOfService')}</Link>
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                <Link component={RouterLink} to="/privacy#gdpr" sx={{ color: 'inherit', textDecoration: 'none' }}>{t('landing.footer.gdpr')}</Link>
+              </Typography>
             </Box>
           </Box>
           <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'grey.800' }}>

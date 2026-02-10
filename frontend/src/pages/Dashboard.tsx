@@ -30,6 +30,13 @@ import { useTranslation } from 'react-i18next';
 import { mockDashboardStats } from '@/data/mockData';
 import { apiClient } from '@/api/client';
 
+interface InvoiceStats {
+  total: number;
+  pending: number;
+  approved: number;
+  needs_review: number;
+}
+
 export interface ActivityRow {
   id: string;
   organizationId: string;
@@ -58,6 +65,7 @@ const Dashboard: React.FC = () => {
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [invoiceStats, setInvoiceStats] = useState<InvoiceStats | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,10 +84,23 @@ const Dashboard: React.FC = () => {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiClient.get<InvoiceStats>('/api/invoices/stats');
+        if (!cancelled) setInvoiceStats(res.data);
+      } catch {
+        if (!cancelled) setInvoiceStats(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const stats = [
-    { title: t('dashboard.stats.invoicesProcessed'), value: mockDashboardStats.invoicesProcessed, icon: <ReceiptIcon />, color: '#1565C0', bgColor: '#E3F2FD' },
-    { title: t('dashboard.stats.pendingApprovals'), value: mockDashboardStats.pendingApprovals, icon: <PendingIcon />, color: '#F57C00', bgColor: '#FFF3E0' },
-    { title: t('dashboard.stats.approvedInvoices'), value: mockDashboardStats.approvedInvoices, icon: <ApprovedIcon />, color: '#2E7D32', bgColor: '#E8F5E9' },
+    { title: t('dashboard.stats.invoicesProcessed'), value: invoiceStats != null ? invoiceStats.total : '—', icon: <ReceiptIcon />, color: '#1565C0', bgColor: '#E3F2FD' },
+    { title: t('dashboard.stats.pendingApprovals'), value: invoiceStats != null ? invoiceStats.pending + invoiceStats.needs_review : '—', icon: <PendingIcon />, color: '#F57C00', bgColor: '#FFF3E0' },
+    { title: t('dashboard.stats.approvedInvoices'), value: invoiceStats != null ? invoiceStats.approved : '—', icon: <ApprovedIcon />, color: '#2E7D32', bgColor: '#E8F5E9' },
     { title: t('dashboard.stats.subscriptionPlan'), value: mockDashboardStats.subscriptionPlan, icon: <PlanIcon />, color: '#7B1FA2', bgColor: '#F3E5F5' },
   ];
 

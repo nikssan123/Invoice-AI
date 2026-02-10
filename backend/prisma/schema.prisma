@@ -11,6 +11,10 @@ datasource db {
 model Organization {
   id              String       @id @default(uuid())
   name            String       @unique
+  address         String?
+  billingEmail    String?
+  ownerId         String?      @unique
+  owner           User?        @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   invitationLimit Int?
   createdAt       DateTime     @default(now())
   users           User[]
@@ -19,21 +23,24 @@ model Organization {
   activities      Activity[]
 
   @@index([name])
+  @@index([ownerId])
 }
 
 model User {
-  id                   String       @id @default(uuid())
-  email                String       @unique
+  id                   String         @id @default(uuid())
+  email                String         @unique
   passwordHash         String
   name                 String?
-  role                 String       @default("member") // admin | member
+  role                 String         @default("member") // admin | member
   organizationId       String
-  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt            DateTime     @default(now())
+  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ownedOrganization    Organization?  @relation("OrgOwner")
+  createdAt            DateTime       @default(now())
   passwordResetToken   String?
   passwordResetExpires DateTime?
   invoices             Invoice[]
-  invitationsSent      Invitation[] @relation("InvitedBy")
+  invitationsSent      Invitation[]   @relation("InvitedBy")
+  excelExportColumnLabels Json?
 
   @@index([organizationId])
 }

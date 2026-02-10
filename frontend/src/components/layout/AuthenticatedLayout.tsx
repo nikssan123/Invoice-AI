@@ -262,18 +262,26 @@ const AuthenticatedLayout: React.FC = () => {
             onClick={handleMenuClose}
             PaperProps={{
               elevation: 3,
-              sx: { minWidth: 200, mt: 1.5 }
+              sx: { minWidth: 200, mt: 1.5 },
             }}
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
           >
-            <MenuItem onClick={() => navigate('/settings')}>
+            <MenuItem
+              onClick={() => {
+                navigate('/profile');
+              }}
+            >
               <ListItemIcon>
                 <PersonIcon fontSize="small" />
               </ListItemIcon>
               {t('layout.authenticated.profile')}
             </MenuItem>
-            <MenuItem onClick={() => navigate('/settings')}>
+            <MenuItem
+              onClick={() => {
+                navigate('/settings');
+              }}
+            >
               <ListItemIcon>
                 <SettingsIcon fontSize="small" />
               </ListItemIcon>

@@ -12,11 +12,14 @@ import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import AcceptInvite from './pages/AcceptInvite';
+import TermsOfService from './pages/TermsOfService';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import Dashboard from './pages/Dashboard';
 import Invoices from './pages/Invoices';
 import InvoiceDetail from './pages/InvoiceDetail';
 import UsageBilling from './pages/UsageBilling';
 import Settings from './pages/Settings';
+import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 
 const queryClient = new QueryClient();
@@ -35,6 +38,8 @@ const App = () => (
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
 
             {/* Protected Routes */}
             <Route
@@ -49,6 +54,7 @@ const App = () => (
               <Route path="/invoices/:id" element={<InvoiceDetail />} />
               <Route path="/usage" element={<UsageBilling />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/profile" element={<Profile />} />
             </Route>
 
             {/* Catch-all */}

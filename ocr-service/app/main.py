@@ -1,7 +1,15 @@
 """FastAPI OCR service - extract plain text from PDF and image uploads."""
 
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env from ocr-service directory when running locally
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 import io
 import logging
+import os
 import uuid
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -9,7 +17,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 from app.confidence import compute_confidence
-from app.extractor import extract_invoice_fields
+from app.extractor import extract_invoice_fields, extract_invoice_fields_from_images
 from app.pdf_utils import pdf_to_images
 from app.rule_extractor import extract_invoice_rules
 from app.schemas import (
@@ -149,12 +157,59 @@ async def extract_llm(payload: ExtractInvoiceRequest) -> ExtractInvoiceResponse:
     return response
 
 
-# @app.post("/extract-invoice", response_model=ExtractInvoiceResponse)
-# async def extract_invoice(payload: ExtractInvoiceRequest) -> ExtractInvoiceResponse:
-#     """Extract structured invoice fields from plain OCR text using an LLM (same as /extract-llm; kept for backward compatibility)."""
-#     request_id = str(uuid.uuid4())[:8]
-#     logger.info("[%s] Extract invoice (LLM) for document %s", request_id, payload.documentId)
-#     return await _extract_invoice_llm(payload)
+@app.post("/extract-vision", response_model=ExtractResponse)
+async def extract_vision(file: UploadFile = File(...)) -> ExtractResponse:
+    """
+    Extract structured invoice fields by sending the uploaded image or PDF
+    directly to the OpenAI vision API (no PaddleOCR). Returns rule-style ExtractResponse.
+    """
+    request_id = str(uuid.uuid4())[:8]
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise HTTPException(
+            status_code=503,
+            detail="Vision extraction requires OpenAI. Set OPENAI_API_KEY.",
+        )
+    if not file.filename:
+        raise HTTPException(status_code=422, detail="No file provided")
+    if not _is_allowed_file(file.filename, file.content_type):
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Allowed: PDF, PNG, JPG",
+        )
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    ext = _get_file_extension(file.filename)
+    images: list[Image.Image] = []
+
+    try:
+        if ext == ".pdf":
+            images = pdf_to_images(content)
+            logger.info("[%s] Extract-vision: PDF converted to %d pages", request_id, len(images))
+        else:
+            img = Image.open(io.BytesIO(content))
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            images = [img]
+            logger.info("[%s] Extract-vision: image upload", request_id)
+    except (ValueError, RuntimeError, OSError) as e:
+        logger.exception("[%s] File conversion failed: %s", request_id, e)
+        raise HTTPException(status_code=500, detail="Failed to convert file to images") from e
+
+    if not images:
+        raise HTTPException(status_code=400, detail="No pages to process")
+
+    try:
+        return await extract_invoice_fields_from_images(images)
+    except RuntimeError as e:
+        if "OPENAI" in str(e) or "vision" in str(e).lower():
+            raise HTTPException(status_code=503, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Vision extraction failed") from e
+    except Exception as e:
+        logger.exception("[%s] Vision extraction failed: %s", request_id, e)
+        raise HTTPException(status_code=500, detail="Vision extraction failed") from e
+
 
 
 @app.post("/extract-invoice", response_model=ExtractResponse)

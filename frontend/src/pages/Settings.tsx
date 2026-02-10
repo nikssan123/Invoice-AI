@@ -26,6 +26,11 @@ import {
   DialogActions,
   Alert,
   CircularProgress,
+  Snackbar,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -34,9 +39,16 @@ import {
   Person as PersonIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
-import { mockUsers } from '@/data/mockData';
 import { useAuth } from '@/context/AuthContext';
 import { apiClient } from '@/api/client';
+
+interface Member {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  createdAt: string;
+}
 
 interface Invitation {
   id: string;
@@ -70,8 +82,95 @@ const Settings: React.FC = () => {
   const [inviteError, setInviteError] = useState('');
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [invitationsLoading, setInvitationsLoading] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [inviteSuccessSnackbar, setInviteSuccessSnackbar] = useState<string | null>(null);
+  const [editRoleMember, setEditRoleMember] = useState<Member | null>(null);
+  const [editRoleValue, setEditRoleValue] = useState<'admin' | 'member'>('member');
+  const [editRoleLoading, setEditRoleLoading] = useState(false);
+  const [editRoleError, setEditRoleError] = useState('');
+  const [removeConfirmMember, setRemoveConfirmMember] = useState<Member | null>(null);
+  const [removeLoading, setRemoveLoading] = useState(false);
+  const [removeError, setRemoveError] = useState('');
+  const [memberSuccessSnackbar, setMemberSuccessSnackbar] = useState<string | null>(null);
 
   const isAdmin = user?.role === 'admin';
+  const isOwner = !!user?.id && user.id === ownerId;
+
+  const fetchMembers = useCallback(async () => {
+    setMembersLoading(true);
+    try {
+      const res = await apiClient.get<{ members: Member[]; ownerId: string | null }>('/api/organizations/members');
+      setMembers(res.data.members ?? []);
+      setOwnerId(res.data.ownerId ?? null);
+    } catch {
+      setMembers([]);
+      setOwnerId(null);
+    } finally {
+      setMembersLoading(false);
+    }
+  }, []);
+
+  const canEditRole = (member: Member): boolean => {
+    if (!isAdmin) return false;
+    if (member.id === ownerId) return false;
+    if (member.role === 'admin' && !isOwner) return false;
+    return true;
+  };
+
+  const canRemove = (member: Member): boolean => {
+    if (!isAdmin) return false;
+    if (member.id === user?.id) return false;
+    if (member.id === ownerId) return false;
+    if (member.role === 'admin' && !isOwner) return false;
+    return true;
+  };
+
+  const handleOpenEditRole = (member: Member) => {
+    setEditRoleMember(member);
+    setEditRoleValue(member.role === 'admin' ? 'admin' : 'member');
+    setEditRoleError('');
+  };
+
+  const handleEditRoleSubmit = async () => {
+    if (!editRoleMember) return;
+    setEditRoleError('');
+    setEditRoleLoading(true);
+    try {
+      await apiClient.patch(`/api/organizations/members/${editRoleMember.id}/role`, { role: editRoleValue });
+      setEditRoleMember(null);
+      setMemberSuccessSnackbar(t('settings.roleUpdated'));
+      await fetchMembers();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      setEditRoleError(axiosErr.response?.data?.error ?? t('settings.saveErrorGeneric'));
+    } finally {
+      setEditRoleLoading(false);
+    }
+  };
+
+  const handleOpenRemoveConfirm = (member: Member) => {
+    setRemoveConfirmMember(member);
+    setRemoveError('');
+  };
+
+  const handleRemoveConfirm = async () => {
+    if (!removeConfirmMember) return;
+    setRemoveError('');
+    setRemoveLoading(true);
+    try {
+      await apiClient.delete(`/api/organizations/members/${removeConfirmMember.id}`);
+      setRemoveConfirmMember(null);
+      setMemberSuccessSnackbar(t('settings.memberRemoved'));
+      await fetchMembers();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      setRemoveError(axiosErr.response?.data?.error ?? t('settings.saveErrorGeneric'));
+    } finally {
+      setRemoveLoading(false);
+    }
+  };
 
   const fetchInvitations = useCallback(async () => {
     setInvitationsLoading(true);
@@ -85,13 +184,54 @@ const Settings: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    if (tabValue === 1) fetchInvitations();
-  }, [tabValue, fetchInvitations]);
+  const [org, setOrg] = useState<{ id: string; name: string; address: string | null; billingEmail: string | null } | null>(null);
+  const [orgLoading, setOrgLoading] = useState(false);
+  const [orgSaveLoading, setOrgSaveLoading] = useState(false);
+  const [orgSaveError, setOrgSaveError] = useState('');
+  const [orgSuccessSnackbar, setOrgSuccessSnackbar] = useState(false);
 
-  // Organization settings
-  const [orgName, setOrgName] = useState('Acme Corp');
-  const [orgAddress, setOrgAddress] = useState('123 Business Street, Suite 100');
+  const fetchOrg = useCallback(async () => {
+    setOrgLoading(true);
+    try {
+      const res = await apiClient.get<{ id: string; name: string; address: string | null; billingEmail: string | null }>('/api/organizations/me');
+      setOrg(res.data);
+    } catch {
+      setOrg(null);
+    } finally {
+      setOrgLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tabValue === 0) fetchOrg();
+  }, [tabValue, fetchOrg]);
+
+  useEffect(() => {
+    if (tabValue === 1) {
+      fetchInvitations();
+      fetchMembers();
+    }
+  }, [tabValue, fetchInvitations, fetchMembers]);
+
+  const handleSaveOrg = async () => {
+    if (!org) return;
+    setOrgSaveError('');
+    setOrgSaveLoading(true);
+    try {
+      const res = await apiClient.patch<typeof org>('/api/organizations/me', {
+        name: org.name,
+        address: org.address ?? '',
+        billingEmail: org.billingEmail ?? '',
+      });
+      setOrg(res.data);
+      setOrgSuccessSnackbar(true);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      setOrgSaveError(axiosErr.response?.data?.error ?? t('settings.saveErrorGeneric'));
+    } finally {
+      setOrgSaveLoading(false);
+    }
+  };
 
   // Preferences
   const [emailNotifications, setEmailNotifications] = useState(true);
@@ -107,6 +247,7 @@ const Settings: React.FC = () => {
       await apiClient.post('/api/organizations/invitations', { email });
       setInviteDialogOpen(false);
       setInviteEmail('');
+      setInviteSuccessSnackbar(email);
       await fetchInvitations();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status: number; data?: { error?: string } } };
@@ -145,37 +286,54 @@ const Settings: React.FC = () => {
               {t('settings.organizationDetails')}
             </Typography>
             <Box sx={{ maxWidth: 600 }}>
-              <TextField
-                fullWidth
-                label={t('settings.organizationName')}
-                value={orgName}
-                onChange={(e) => setOrgName(e.target.value)}
-                sx={{ mb: 3 }}
-              />
-              <TextField
-                fullWidth
-                label={t('settings.businessAddress')}
-                value={orgAddress}
-                onChange={(e) => setOrgAddress(e.target.value)}
-                multiline
-                rows={2}
-                sx={{ mb: 3 }}
-              />
-              <TextField
-                fullWidth
-                label={t('settings.vatNumber')}
-                defaultValue="DE123456789"
-                sx={{ mb: 3 }}
-              />
-              <TextField
-                fullWidth
-                label={t('settings.billingEmail')}
-                defaultValue="billing@acmecorp.com"
-                sx={{ mb: 3 }}
-              />
-              <Button variant="contained">
-                {t('settings.saveChanges')}
-              </Button>
+              {orgLoading ? (
+                <Box sx={{ py: 3, display: 'flex', justifyContent: 'center' }}>
+                  <CircularProgress size={32} />
+                </Box>
+              ) : org ? (
+                <>
+                  {orgSaveError && (
+                    <Alert severity="error" sx={{ mb: 2 }} onClose={() => setOrgSaveError('')}>
+                      {orgSaveError}
+                    </Alert>
+                  )}
+                  <TextField
+                    fullWidth
+                    label={t('settings.organizationName')}
+                    value={org.name}
+                    onChange={(e) => setOrg((prev) => (prev ? { ...prev, name: e.target.value } : null))}
+                    sx={{ mb: 3 }}
+                  />
+                  <TextField
+                    fullWidth
+                    label={t('settings.businessAddress')}
+                    value={org.address ?? ''}
+                    onChange={(e) => setOrg((prev) => (prev ? { ...prev, address: e.target.value || null } : null))}
+                    multiline
+                    rows={2}
+                    sx={{ mb: 3 }}
+                  />
+                  <TextField
+                    fullWidth
+                    label={t('settings.billingEmail')}
+                    value={org.billingEmail ?? ''}
+                    onChange={(e) => setOrg((prev) => (prev ? { ...prev, billingEmail: e.target.value || null } : null))}
+                    type="email"
+                    sx={{ mb: 3 }}
+                  />
+                  {isAdmin && (
+                    <Button
+                      variant="contained"
+                      onClick={handleSaveOrg}
+                      disabled={orgSaveLoading}
+                    >
+                      {orgSaveLoading ? <CircularProgress size={24} color="inherit" /> : t('settings.saveChanges')}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <Typography color="text.secondary">{t('settings.organizationLoadFailed')}</Typography>
+              )}
             </Box>
           </CardContent>
         </TabPanel>
@@ -266,47 +424,78 @@ const Settings: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {mockUsers.map((teamUser) => (
-                    <TableRow key={teamUser.id}>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <Avatar sx={{ bgcolor: 'primary.main' }}>
-                            {teamUser.name.charAt(0)}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="subtitle2">
-                              {teamUser.name}
-                              {teamUser.email === user?.email && (
-                                <Chip label={t('settings.you')} size="small" sx={{ ml: 1 }} />
-                              )}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {teamUser.email}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={teamUser.role === 'admin' ? t('settings.admin') : t('settings.userRole')}
-                          color={teamUser.role === 'admin' ? 'primary' : 'default'}
-                          size="small"
-                          variant="outlined"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Chip label={t('settings.active')} color="success" size="small" variant="outlined" />
-                      </TableCell>
-                      <TableCell align="right">
-                        <IconButton size="small">
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton size="small" disabled={teamUser.email === user?.email}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                  {membersLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center" sx={{ py: 3 }}>
+                        <CircularProgress size={24} />
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : members.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center" sx={{ py: 3 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          {t('settings.noTeamMembers')}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    members.map((teamUser) => (
+                      <TableRow key={teamUser.id}>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <Avatar sx={{ bgcolor: 'primary.main' }}>
+                              {(teamUser.name || teamUser.email).charAt(0).toUpperCase()}
+                            </Avatar>
+                            <Box>
+                              <Typography variant="subtitle2">
+                                {teamUser.name || teamUser.email}
+                                {teamUser.email === user?.email && (
+                                  <Chip label={t('settings.you')} size="small" sx={{ ml: 1 }} />
+                                )}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {teamUser.email}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                            <Chip
+                              label={teamUser.role === 'admin' ? t('settings.admin') : t('settings.userRole')}
+                              color={teamUser.role === 'admin' ? 'primary' : 'default'}
+                              size="small"
+                              variant="outlined"
+                            />
+                            {teamUser.id === ownerId && (
+                              <Chip label={t('settings.owner')} size="small" color="primary" variant="filled" />
+                            )}
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={t('settings.active')} color="success" size="small" variant="outlined" />
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenEditRole(teamUser)}
+                            disabled={!canEditRole(teamUser)}
+                            title={!canEditRole(teamUser) ? t('settings.onlyOwnerCanDemote') : undefined}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenRemoveConfirm(teamUser)}
+                            disabled={!canRemove(teamUser)}
+                            title={!canRemove(teamUser) ? t('settings.onlyOwnerCanRemoveAdmin') : undefined}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -421,6 +610,104 @@ const Settings: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      <Snackbar
+        open={!!inviteSuccessSnackbar}
+        autoHideDuration={5000}
+        onClose={() => setInviteSuccessSnackbar(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setInviteSuccessSnackbar(null)} severity="success" sx={{ width: '100%' }}>
+          {inviteSuccessSnackbar ? t('settings.inviteSuccessEmail', { email: inviteSuccessSnackbar }) : ''}
+        </Alert>
+      </Snackbar>
+      <Snackbar
+        open={orgSuccessSnackbar}
+        autoHideDuration={4000}
+        onClose={() => setOrgSuccessSnackbar(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setOrgSuccessSnackbar(false)} severity="success" sx={{ width: '100%' }}>
+          {t('settings.organizationSaved')}
+        </Alert>
+      </Snackbar>
+
+      {/* Edit role dialog */}
+      <Dialog
+        open={!!editRoleMember}
+        onClose={() => { setEditRoleMember(null); setEditRoleError(''); }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>{t('settings.editRole')}</DialogTitle>
+        <DialogContent>
+          {editRoleMember && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {t('settings.editRoleFor', { name: editRoleMember.name || editRoleMember.email })}
+            </Typography>
+          )}
+          {editRoleError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setEditRoleError('')}>
+              {editRoleError}
+            </Alert>
+          )}
+          <FormControl fullWidth sx={{ mt: 1 }}>
+            <InputLabel>{t('settings.role')}</InputLabel>
+            <Select
+              value={editRoleValue}
+              label={t('settings.role')}
+              onChange={(e) => setEditRoleValue(e.target.value as 'admin' | 'member')}
+            >
+              <MenuItem value="member">{t('settings.userRole')}</MenuItem>
+              <MenuItem value="admin">{t('settings.admin')}</MenuItem>
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditRoleMember(null)}>{t('common.cancel')}</Button>
+          <Button variant="contained" onClick={handleEditRoleSubmit} disabled={editRoleLoading}>
+            {editRoleLoading ? <CircularProgress size={24} color="inherit" /> : t('settings.saveChanges')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Remove member confirmation */}
+      <Dialog
+        open={!!removeConfirmMember}
+        onClose={() => { setRemoveConfirmMember(null); setRemoveError(''); }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>{t('settings.removeMember')}</DialogTitle>
+        <DialogContent>
+          {removeConfirmMember && (
+            <Typography variant="body2">
+              {t('settings.removeMemberConfirm', { name: removeConfirmMember.name || removeConfirmMember.email })}
+            </Typography>
+          )}
+          {removeError && (
+            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setRemoveError('')}>
+              {removeError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRemoveConfirmMember(null)}>{t('common.cancel')}</Button>
+          <Button color="error" variant="contained" onClick={handleRemoveConfirm} disabled={removeLoading}>
+            {removeLoading ? <CircularProgress size={24} color="inherit" /> : t('settings.remove')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={!!memberSuccessSnackbar}
+        autoHideDuration={4000}
+        onClose={() => setMemberSuccessSnackbar(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setMemberSuccessSnackbar(null)} severity="success" sx={{ width: '100%' }}>
+          {memberSuccessSnackbar ?? ''}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

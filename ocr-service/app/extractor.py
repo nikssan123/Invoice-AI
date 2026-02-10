@@ -1,10 +1,14 @@
 import asyncio
+import base64
+import io
 import json
 import logging
 import os
 from typing import Protocol, runtime_checkable
 
-from app.schemas import InvoiceFields
+from PIL import Image
+
+from app.schemas import ExtractResponse, InvoiceFields
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +49,8 @@ class OpenAILLMClient:
 
     Uses the official OpenAI Python SDK. Configuration via env vars:
     - OPENAI_API_KEY: required API key.
-    - OPENAI_MODEL: optional model name (default: gpt-4.1-mini).
+    - OPENAI_MODEL: optional model for text (default: gpt-4.1-mini).
+    - OPENAI_VISION_MODEL: optional model for vision (default: gpt-5.2).
     """
 
     def __init__(self) -> None:
@@ -63,7 +68,8 @@ class OpenAILLMClient:
 
         self._client = OpenAI(api_key=api_key)
         self._model = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
-        logger.info("Initialized OpenAILLMClient with model %s", self._model)
+        self._vision_model = os.environ.get("OPENAI_VISION_MODEL", "gpt-5.2")
+        logger.info("Initialized OpenAILLMClient with model %s, vision %s", self._model, self._vision_model)
 
     async def extract_invoice_json(self, prompt: str) -> str:
         """Call OpenAI chat completion API and return the raw content string."""
@@ -85,12 +91,46 @@ class OpenAILLMClient:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.0,
-                max_tokens=512,
+                max_completion_tokens=512,
             )
             content = response.choices[0].message.content or ""
             return content.strip()
 
         # Run the blocking OpenAI call in a thread so we don't block the event loop
+        return await asyncio.to_thread(_call)
+
+    async def extract_invoice_json_from_images(
+        self, image_parts: list[tuple[bytes, str]], prompt: str
+    ) -> str:
+        """Call OpenAI vision API: user message with text + image_url parts; return raw JSON string."""
+        content: list[dict] = [{"type": "text", "text": prompt}]
+        for img_bytes, mime in image_parts:
+            b64 = base64.standard_b64encode(img_bytes).decode("ascii")
+            content.append(
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
+            )
+
+        def _call() -> str:
+            from openai import OpenAI  # type: ignore  # noqa: F401
+            logger.info("Extracting invoice fields from images with model %s", self._vision_model)
+            response = self._client.chat.completions.create(
+                model=self._vision_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an invoice extraction engine. "
+                            "Follow the user's instructions exactly and return ONLY valid JSON."
+                        ),
+                    },
+                    {"role": "user", "content": content},
+                ],
+                temperature=0.0,
+                max_completion_tokens=1024,
+            )
+            raw = response.choices[0].message.content or ""
+            return raw.strip()
+
         return await asyncio.to_thread(_call)
 
 
@@ -136,6 +176,82 @@ Expected JSON format:
 
 OCR text:
 \"\"\"{ocr_text}\"\"\""""
+
+VISION_PROMPT = """The following image(s) show an invoice document. Extract the requested fields from the image(s).
+
+Requirements:
+- Return STRICT JSON only, no explanation or additional text.
+- Use null for missing or unknown fields. Use null for any entire nested object if all its fields are missing.
+- Do NOT invent or guess values not explicitly present in the document.
+- Normalize: dates as YYYY-MM-DD; numbers with optional decimal point, no thousands separators; currency as ISO codes (EUR, USD, BGN).
+- confidenceScores: For each extracted value you are confident about, add a key to confidenceScores with a number from 0.0 (not confident) to 1.0 (very confident). Use keys such as: supplierName, supplierAddress, supplierEik, supplierVat, clientName, clientEik, clientVat, invoiceNumber, invoiceDate, serviceDescription, quantity, unitPrice, serviceTotal, accountingAccount, subtotal, vat, total, currency. Only include keys for fields you actually extracted; use 1.0 when the value was clearly visible and unambiguous, lower values when unclear or partially legible.
+
+Expected JSON format (use exactly these keys):
+{{
+  "invoiceNumber": string|null,
+  "invoiceDate": string|null,
+  "supplier": {{ "name": string|null, "address": string|null, "eik": string|null, "vat": string|null }} | null,
+  "client": {{ "name": string|null, "eik": string|null, "vat": string|null }} | null,
+  "service": {{ "description": string|null, "quantity": string|null, "unitPrice": number|null, "total": number|null }} | null,
+  "accountingAccount": string|null,
+  "amounts": {{ "subtotal": number|null, "vat": number|null, "total": number|null, "currency": string|null }} | null,
+  "confidenceScores": {{ string: number }} (e.g. "supplierName": 0.95, "invoiceNumber": 1.0, "total": 0.9; 0.0-1.0, only for fields you extracted)
+}}"""
+
+
+def _strip_markdown_json(raw: str) -> str:
+    """If raw is wrapped in ```json ... ``` or ``` ... ```, return the inner content; else return stripped raw."""
+    s = raw.strip()
+    if s.startswith("```"):
+        # Remove opening fence (```json or ```)
+        first_nl = s.find("\n")
+        if first_nl != -1:
+            s = s[first_nl + 1 :]
+        # Remove closing ```
+        if s.rstrip().endswith("```"):
+            s = s[: s.rstrip().rfind("```")].rstrip()
+        return s.strip()
+    return s
+
+
+def _pil_to_base64_parts(images: list[Image.Image]) -> list[tuple[bytes, str]]:
+    """Convert PIL images to (bytes, mime) for vision API. Uses PNG."""
+    parts: list[tuple[bytes, str]] = []
+    buf = io.BytesIO()
+    for img in images:
+        buf.seek(0)
+        buf.truncate(0)
+        if getattr(img, "mode", None) != "RGB":
+            img = img.convert("RGB")
+        img.save(buf, format="PNG")
+        parts.append((buf.getvalue(), "image/png"))
+    return parts
+
+
+async def extract_invoice_fields_from_images(
+    images: list[Image.Image], document_id: str | None = None
+) -> ExtractResponse:
+    """
+    Extract invoice fields by sending image(s) to OpenAI vision API.
+    Returns rule-style ExtractResponse (supplier, client, service, amounts, etc.).
+    Requires OPENAI_API_KEY; callers should return 503 when not set.
+    """
+    if not images:
+        return ExtractResponse()
+    image_parts = _pil_to_base64_parts(images)
+    prompt = VISION_PROMPT
+    client = get_llm_client()
+    method = getattr(client, "extract_invoice_json_from_images", None)
+    if method is None:
+        raise RuntimeError("Vision extraction requires OpenAI (set OPENAI_API_KEY).")
+    try:
+        raw = await method(image_parts, prompt)
+        parsed = _strip_markdown_json(raw)
+        data = json.loads(parsed)
+        return ExtractResponse(**data)
+    except Exception as exc:
+        logger.exception("Vision extraction failed: %s", exc)
+        raise
 
 
 async def extract_invoice_fields(ocr_text: str) -> InvoiceFields:

@@ -15,8 +15,9 @@ import {
   IconButton,
   Tooltip,
   Alert,
-   Menu,
-   MenuItem,
+  Menu,
+  MenuItem,
+  Snackbar,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -24,12 +25,14 @@ import {
   Delete as DeleteIcon,
   DriveFileMove as MoveIcon,
   FilterList as FilterListIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import FolderTree from '@/components/invoices/FolderTree';
 import InvoiceList from '@/components/invoices/InvoiceList';
 import Breadcrumbs from '@/components/invoices/Breadcrumbs';
 import { FolderNameDialog, DeleteDialog, MoveDialog } from '@/components/invoices/FolderDialogs';
+import ExportColumnsDialog from '@/components/invoices/ExportColumnsDialog';
 import {
   Folder,
   FolderInvoice,
@@ -37,6 +40,7 @@ import {
   mockFolderInvoices,
   getFolderPath,
 } from '@/data/folderData';
+import type { ExportColumnConfig } from '@/types/export';
 import { apiClient } from '@/api/client';
 
 const Invoices: React.FC = () => {
@@ -89,7 +93,19 @@ const Invoices: React.FC = () => {
   // Error message for folder/invoice actions (create, move, delete)
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const loadTree = useCallback(async () => {
+  // Invoices we're waiting on for extraction; poll until extractedAt is set, then refresh
+  const [pendingExtractionIds, setPendingExtractionIds] = useState<string[]>([]);
+  const [extractionCompleteSnackbar, setExtractionCompleteSnackbar] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportSuccessSnackbar, setExportSuccessSnackbar] = useState(false);
+  const [exportColumns, setExportColumns] = useState<ExportColumnConfig[] | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<'selected' | 'folder' | null>(null);
+  const [hasExportConfig, setHasExportConfig] = useState<boolean | null>(null);
+
+  const loadTree = useCallback(async (): Promise<
+    { folders: Record<string, Folder>; invoices: Record<string, FolderInvoice> } | undefined
+  > => {
     try {
       const res = await apiClient.get<{
         folders: Folder[];
@@ -104,15 +120,50 @@ const Invoices: React.FC = () => {
       setFolders(folderMap);
       setInvoices(res.data.invoices);
       setSelectedFolderId('root');
+      return { folders: folderMap, invoices: res.data.invoices };
     } catch (err) {
       // Leave mock data in place if backend tree cannot be loaded
       console.error('Failed to load invoice tree', err);
+      return undefined;
     }
   }, []);
 
   useEffect(() => {
     loadTree();
   }, [loadTree]);
+
+  // When invoices update, check if all pending extractions are complete
+  useEffect(() => {
+    if (pendingExtractionIds.length === 0) return;
+    const allDone = pendingExtractionIds.every(
+      (id) => invoices[id]?.extractedAt != null
+    );
+    if (allDone) {
+      setPendingExtractionIds([]);
+      setExtractionCompleteSnackbar(true);
+    }
+  }, [invoices, pendingExtractionIds]);
+
+  // Poll only after a new upload: fetch tree until all uploaded invoices have extractedAt, or 90s
+  useEffect(() => {
+    if (pendingExtractionIds.length === 0) return;
+    const POLL_MS = 2500;
+    const TIMEOUT_MS = 90000;
+    const startedAt = Date.now();
+    const pending = pendingExtractionIds;
+    const intervalId = setInterval(async () => {
+      if (Date.now() - startedAt >= TIMEOUT_MS) {
+        setPendingExtractionIds([]);
+        return;
+      }
+      const data = await loadTree();
+      if (data && pending.every((id) => data.invoices[id]?.extractedAt != null)) {
+        setPendingExtractionIds([]);
+        setExtractionCompleteSnackbar(true);
+      }
+    }, POLL_MS);
+    return () => clearInterval(intervalId);
+  }, [pendingExtractionIds, loadTree]);
 
   // Get current folder and its contents
   const currentFolder = folders[selectedFolderId];
@@ -466,6 +517,158 @@ const Invoices: React.FC = () => {
     });
   };
 
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const fetchExportConfigIfNeeded = async (): Promise<boolean> => {
+    if (exportColumns) return true;
+    try {
+      const res = await apiClient.get<{ columns: ExportColumnConfig[]; hasConfig: boolean }>(
+        '/api/invoices/config/export'
+      );
+      setExportColumns(res.data.columns);
+      setHasExportConfig(res.data.hasConfig);
+      return true;
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        (err as Error)?.message ??
+        t('invoices.exportConfigLoadError');
+      setActionError(message);
+      return false;
+    }
+  };
+
+  const startExportWithMode = async (mode: 'selected' | 'folder') => {
+    const ok = await fetchExportConfigIfNeeded();
+    if (!ok) return;
+    // If user has no config yet, show dialog once to initialize it.
+    if (hasExportConfig === false) {
+      setExportMode(mode);
+      setExportDialogOpen(true);
+    } else {
+      // Config already exists: run export directly without showing dialog.
+      await runExport(mode);
+    }
+  };
+
+  const handleExportSelected = async () => {
+    if (selectedInvoices.size === 0 || exporting) return;
+    await startExportWithMode('selected');
+  };
+
+  const handleExportFolder = async () => {
+    if (!selectedFolderId || exporting) return;
+    await startExportWithMode('folder');
+  };
+
+  const runExport = async (mode: 'selected' | 'folder') => {
+    setActionError(null);
+    setExporting(true);
+    try {
+      if (mode === 'selected') {
+        const ids = Array.from(selectedInvoices);
+        if (ids.length === 0) return;
+        const response = await apiClient.post<ArrayBuffer>(
+          '/api/invoices/export',
+          {
+            scope: 'selected',
+            invoiceIds: ids,
+            onlyConfirmed: true,
+          },
+          {
+            responseType: 'arraybuffer',
+          }
+        );
+        const blob = new Blob([response.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        triggerDownload(blob, `invoices-selected-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      } else {
+        const response = await apiClient.post<ArrayBuffer>(
+          '/api/invoices/export',
+          {
+            scope: 'folder',
+            folderIds: [selectedFolderId],
+            includeSubfolders: true,
+            onlyConfirmed: true,
+          },
+          {
+            responseType: 'arraybuffer',
+          }
+        );
+        const blob = new Blob([response.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        triggerDownload(blob, `invoices-folder-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      }
+      setExportSuccessSnackbar(true);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: unknown } };
+      let message: string | undefined;
+
+      const respData = axiosErr.response?.data;
+      if (respData) {
+        try {
+          let parsed: unknown;
+          if (respData instanceof ArrayBuffer) {
+            const text = new TextDecoder('utf-8').decode(new Uint8Array(respData));
+            parsed = JSON.parse(text);
+          } else if (typeof respData === 'string') {
+            parsed = JSON.parse(respData);
+          } else if (typeof respData === 'object') {
+            parsed = respData;
+          }
+          if (parsed && typeof (parsed as { error?: string }).error === 'string') {
+            message = (parsed as { error: string }).error;
+          }
+        } catch {
+          // If parsing fails, fall back to a generic message
+        }
+      }
+
+      if (!message) {
+        message = t('invoices.exportError');
+      }
+
+      setActionError(message);
+    } finally {
+      setExporting(false);
+      setExportDialogOpen(false);
+      setExportMode(null);
+    }
+  };
+
+  const handleConfirmExportColumns = async (cols: ExportColumnConfig[]) => {
+    setExportColumns(cols);
+    try {
+      const labels: Record<string, string> = {};
+      cols.forEach((c) => {
+        labels[c.key] = c.currentLabel;
+      });
+      await apiClient.put('/api/invoices/config/export', { labels });
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        (err as Error)?.message ??
+        t('invoices.exportConfigSaveError');
+      setActionError(message);
+      return;
+    }
+    setHasExportConfig(true);
+    if (exportMode) {
+      await runExport(exportMode);
+    }
+  };
+
   // Upload handler: POST files to backend, merge response into state
   const handleUpload = useCallback(
     async (files: FileList | null) => {
@@ -482,8 +685,11 @@ const Invoices: React.FC = () => {
           ids: string[];
           files: { id: string; filename: string }[];
         }>('/api/invoices/upload', formData);
-        // After upload, refresh the tree from backend so folders/invoices reflect reality
+        // After upload, refresh the tree and track ids so we poll until extraction completes
         await loadTree();
+        if (res.data.ids?.length) {
+          setPendingExtractionIds(res.data.ids);
+        }
         setUploadDialogOpen(false);
       } catch (err: unknown) {
         const message =
@@ -595,13 +801,23 @@ const Invoices: React.FC = () => {
               </Typography>
               <Breadcrumbs path={folderPath} onNavigate={setSelectedFolderId} />
             </Box>
-            <Button
-              variant="contained"
-              startIcon={<UploadIcon />}
-              onClick={() => setUploadDialogOpen(true)}
-            >
-              {t('invoices.uploadInvoice')}
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<DownloadIcon />}
+                onClick={handleExportFolder}
+                disabled={exporting}
+              >
+                {t('invoices.exportFolder')}
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<UploadIcon />}
+                onClick={() => setUploadDialogOpen(true)}
+              >
+                {t('invoices.uploadInvoice')}
+              </Button>
+            </Box>
           </Box>
 
           {actionError && (
@@ -731,14 +947,25 @@ const Invoices: React.FC = () => {
                   {t('invoices.selectedCount', { count: selectedInvoices.size })}
                 </Typography>
                 <Tooltip title={t('invoices.moveSelected')}>
-                    <IconButton size="small" onClick={handleBulkMove}>
-                      <MoveIcon fontSize="small" />
-                    </IconButton>
+                  <IconButton size="small" onClick={handleBulkMove}>
+                    <MoveIcon fontSize="small" />
+                  </IconButton>
                 </Tooltip>
                 <Tooltip title={t('invoices.deleteSelected')}>
                   <IconButton size="small" color="error" onClick={handleBulkDelete}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
+                </Tooltip>
+                <Tooltip title={t('invoices.exportSelected')}>
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={handleExportSelected}
+                      disabled={exporting}
+                    >
+                      <DownloadIcon fontSize="small" />
+                    </IconButton>
+                  </span>
                 </Tooltip>
               </Toolbar>
             )}
@@ -871,6 +1098,33 @@ const Invoices: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={extractionCompleteSnackbar}
+        autoHideDuration={4000}
+        onClose={() => setExtractionCompleteSnackbar(false)}
+        message={t('invoices.extractionComplete')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      <Snackbar
+        open={exportSuccessSnackbar}
+        autoHideDuration={4000}
+        onClose={() => setExportSuccessSnackbar(false)}
+        message={t('invoices.exportSuccess')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      <ExportColumnsDialog
+        open={exportDialogOpen}
+        columns={exportColumns || []}
+        loading={exporting}
+        onClose={() => {
+          if (!exporting) {
+            setExportDialogOpen(false);
+            setExportMode(null);
+          }
+        }}
+        onConfirm={handleConfirmExportColumns}
+      />
     </Box>
   );
 };

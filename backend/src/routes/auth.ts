@@ -143,6 +143,10 @@ router.post("/register", async (req: Request, res: Response) => {
         role: "admin",
       },
     });
+    await prisma.organization.update({
+      where: { id: org.id },
+      data: { ownerId: user.id },
+    });
     sendWelcomeEmail(user.email, user.name).catch((err) =>
       console.error("Welcome email failed:", err)
     );
