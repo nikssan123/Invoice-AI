@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Drawer,
@@ -31,6 +31,7 @@ import {
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
+import { apiClient } from '@/api/client';
 
 const DRAWER_WIDTH = 260;
 const COLLAPSED_WIDTH = 72;
@@ -45,6 +46,28 @@ const AuthenticatedLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+
+  type BillingSummary = {
+    plan: 'starter' | 'pro' | 'enterprise';
+    monthlyInvoiceLimit: number;
+    invoicesUsedThisPeriod: number;
+  };
+  const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiClient.get<BillingSummary>('/api/billing/summary');
+        if (!cancelled) setBillingSummary(res.data);
+      } catch {
+        if (!cancelled) setBillingSummary(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const menuItems = [
     { text: t('layout.authenticated.dashboard'), icon: <DashboardIcon />, path: '/dashboard' },
@@ -190,10 +213,21 @@ const AuthenticatedLayout: React.FC = () => {
               {t('layout.authenticated.currentPlan')}
             </Typography>
             <Typography variant="subtitle2" fontWeight={600}>
-              {t('layout.authenticated.proPlan')}
+              {billingSummary
+                ? billingSummary.plan === 'starter'
+                  ? 'Starter'
+                  : billingSummary.plan === 'pro'
+                    ? 'Pro'
+                    : 'Enterprise'
+                : t('layout.authenticated.proPlan')}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {t('layout.authenticated.invoicesUsage', { used: 247, limit: 500 })}
+              {billingSummary
+                ? t('layout.authenticated.invoicesUsage', {
+                    used: billingSummary.invoicesUsedThisPeriod,
+                    limit: billingSummary.monthlyInvoiceLimit,
+                  })
+                : t('layout.authenticated.invoicesUsage', { used: 0, limit: 0 })}
             </Typography>
           </Box>
         )}

@@ -35,6 +35,7 @@ interface InvoiceStats {
   pending: number;
   approved: number;
   needs_review: number;
+  avgProcessingTimeSeconds: number | null;
 }
 
 export interface ActivityRow {
@@ -66,6 +67,11 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [invoiceStats, setInvoiceStats] = useState<InvoiceStats | null>(null);
+  const [billingSummary, setBillingSummary] = useState<{
+    plan: 'starter' | 'pro' | 'enterprise';
+    monthlyInvoiceLimit: number;
+    invoicesUsedThisPeriod: number;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +94,32 @@ const Dashboard: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
+        const res = await apiClient.get<{
+          plan: 'starter' | 'pro' | 'enterprise';
+          subscriptionStatus: 'active' | 'past_due' | 'canceled';
+          monthlyInvoiceLimit: number;
+          invoicesUsedThisPeriod: number;
+        }>('/api/billing/summary');
+        if (!cancelled) {
+          setBillingSummary({
+            plan: res.data.plan,
+            monthlyInvoiceLimit: res.data.monthlyInvoiceLimit,
+            invoicesUsedThisPeriod: res.data.invoicesUsedThisPeriod,
+          });
+        }
+      } catch {
+        if (!cancelled) setBillingSummary(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
         const res = await apiClient.get<InvoiceStats>('/api/invoices/stats');
         if (!cancelled) setInvoiceStats(res.data);
       } catch {
@@ -101,7 +133,20 @@ const Dashboard: React.FC = () => {
     { title: t('dashboard.stats.invoicesProcessed'), value: invoiceStats != null ? invoiceStats.total : '—', icon: <ReceiptIcon />, color: '#1565C0', bgColor: '#E3F2FD' },
     { title: t('dashboard.stats.pendingApprovals'), value: invoiceStats != null ? invoiceStats.pending + invoiceStats.needs_review : '—', icon: <PendingIcon />, color: '#F57C00', bgColor: '#FFF3E0' },
     { title: t('dashboard.stats.approvedInvoices'), value: invoiceStats != null ? invoiceStats.approved : '—', icon: <ApprovedIcon />, color: '#2E7D32', bgColor: '#E8F5E9' },
-    { title: t('dashboard.stats.subscriptionPlan'), value: mockDashboardStats.subscriptionPlan, icon: <PlanIcon />, color: '#7B1FA2', bgColor: '#F3E5F5' },
+    {
+      title: t('dashboard.stats.subscriptionPlan'),
+      value:
+        billingSummary != null
+          ? billingSummary.plan === 'starter'
+            ? 'Starter'
+            : billingSummary.plan === 'pro'
+              ? 'Pro'
+              : 'Enterprise'
+          : mockDashboardStats.subscriptionPlan,
+      icon: <PlanIcon />,
+      color: '#7B1FA2',
+      bgColor: '#F3E5F5',
+    },
   ];
 
   const getActivityIcon = (actionType: string) => {
@@ -226,23 +271,57 @@ const Dashboard: React.FC = () => {
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>{t('dashboard.quickStats')}</Typography>
               <Box sx={{ mb: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">{t('dashboard.monthlyUsage')}</Typography>
-                  <Typography variant="body2" fontWeight={600}>247 / 500</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {t('dashboard.monthlyUsage')}
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    {billingSummary
+                      ? `${billingSummary.invoicesUsedThisPeriod} / ${billingSummary.monthlyInvoiceLimit}`
+                      : '—'}
+                  </Typography>
                 </Box>
                 <Box sx={{ height: 8, bgcolor: 'grey.200', borderRadius: 4, overflow: 'hidden' }}>
-                  <Box sx={{ width: '49.4%', height: '100%', bgcolor: 'primary.main', borderRadius: 4 }} />
+                  <Box
+                    sx={{
+                      width:
+                        billingSummary && billingSummary.monthlyInvoiceLimit > 0
+                          ? `${Math.min(
+                              (billingSummary.invoicesUsedThisPeriod /
+                                billingSummary.monthlyInvoiceLimit) *
+                                100,
+                              100,
+                            )}%`
+                          : '0%',
+                      height: '100%',
+                      bgcolor: 'primary.main',
+                      borderRadius: 4,
+                    }}
+                  />
                 </Box>
               </Box>
               <Box sx={{ mb: 3 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('dashboard.approvalRate')}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  {t('dashboard.approvalRate')}
+                </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="h5" fontWeight={700} color="success.main">95.1%</Typography>
-                  <Chip label="+2.3%" color="success" size="small" />
+                  <Typography variant="h5" fontWeight={700} color="success.main">
+                    {invoiceStats && invoiceStats.total > 0
+                      ? `${((invoiceStats.approved / invoiceStats.total) * 100).toFixed(1)}%`
+                      : '—'}
+                  </Typography>
                 </Box>
               </Box>
               <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('dashboard.avgProcessingTime')}</Typography>
-                <Typography variant="h5" fontWeight={700}>2.3 min</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  {t('dashboard.avgProcessingTime')}
+                </Typography>
+                <Typography variant="h5" fontWeight={700}>
+                  {invoiceStats?.avgProcessingTimeSeconds != null
+                    ? invoiceStats.avgProcessingTimeSeconds >= 60
+                      ? `${(invoiceStats.avgProcessingTimeSeconds / 60).toFixed(1)} min`
+                      : `${Math.round(invoiceStats.avgProcessingTimeSeconds)} sec`
+                    : '—'}
+                </Typography>
               </Box>
             </CardContent>
           </Card>

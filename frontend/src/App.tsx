@@ -53,6 +53,7 @@ const App = () => (
               <Route path="/invoices" element={<Invoices />} />
               <Route path="/invoices/:id" element={<InvoiceDetail />} />
               <Route path="/usage" element={<UsageBilling />} />
+              <Route path="/usage-billing" element={<UsageBilling />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
             </Route>

@@ -213,6 +213,32 @@ const Settings: React.FC = () => {
     }
   }, [tabValue, fetchInvitations, fetchMembers]);
 
+  // Load organization-level processing preferences when Preferences tab is opened
+  useEffect(() => {
+    const loadPreferences = async () => {
+      if (tabValue !== 2) return;
+      setPrefsLoading(true);
+      setPrefsError('');
+      try {
+        const res = await apiClient.get<{ autoApproveHighConfidence: boolean; emailNotificationsOnApproval: boolean }>(
+          '/api/organizations/preferences',
+        );
+        setAutoApprove(res.data.autoApproveHighConfidence);
+        setEmailNotifications(res.data.emailNotificationsOnApproval);
+        setInitialAutoApprove(res.data.autoApproveHighConfidence);
+        setInitialEmailNotifications(res.data.emailNotificationsOnApproval);
+      } catch (err: any) {
+        const message =
+          err?.response?.data?.error ?? t('settings.preferencesLoadFailed');
+        setPrefsError(message);
+      } finally {
+        setPrefsLoading(false);
+      }
+    };
+
+    loadPreferences();
+  }, [tabValue, t]);
+
   const handleSaveOrg = async () => {
     if (!org) return;
     setOrgSaveError('');
@@ -235,8 +261,13 @@ const Settings: React.FC = () => {
 
   // Preferences
   const [emailNotifications, setEmailNotifications] = useState(true);
-  const [weeklyReport, setWeeklyReport] = useState(true);
   const [autoApprove, setAutoApprove] = useState(false);
+  const [prefsLoading, setPrefsLoading] = useState(false);
+  const [prefsSaving, setPrefsSaving] = useState(false);
+  const [prefsError, setPrefsError] = useState("");
+  const [prefsSuccess, setPrefsSuccess] = useState("");
+  const [initialEmailNotifications, setInitialEmailNotifications] = useState<boolean | null>(null);
+  const [initialAutoApprove, setInitialAutoApprove] = useState<boolean | null>(null);
 
   const handleInviteUser = async () => {
     setInviteError('');
@@ -509,6 +540,16 @@ const Settings: React.FC = () => {
               {t('settings.notificationPreferences')}
             </Typography>
             <Box sx={{ maxWidth: 600 }}>
+              {prefsError && (
+                <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPrefsError("")}>
+                  {prefsError}
+                </Alert>
+              )}
+              {prefsSuccess && (
+                <Alert severity="success" sx={{ mb: 2 }} onClose={() => setPrefsSuccess("")}>
+                  {prefsSuccess}
+                </Alert>
+              )}
               <FormControlLabel
                 control={
                   <Switch
@@ -527,24 +568,6 @@ const Settings: React.FC = () => {
                 sx={{ mb: 2, alignItems: 'flex-start' }}
               />
               <Divider sx={{ my: 2 }} />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={weeklyReport}
-                    onChange={(e) => setWeeklyReport(e.target.checked)}
-                  />
-                }
-                label={
-                  <Box>
-                    <Typography variant="body1">{t('settings.weeklySummaryReport')}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {t('settings.weeklyReportDesc')}
-                    </Typography>
-                  </Box>
-                }
-                sx={{ mb: 2, alignItems: 'flex-start' }}
-              />
-              <Divider sx={{ my: 2 }} />
 
               <Typography variant="h6" sx={{ mt: 4, mb: 3, fontWeight: 600 }}>
                 {t('settings.processingPreferences')}
@@ -554,6 +577,7 @@ const Settings: React.FC = () => {
                   <Switch
                     checked={autoApprove}
                     onChange={(e) => setAutoApprove(e.target.checked)}
+                    disabled={prefsLoading || prefsSaving}
                   />
                 }
                 label={
@@ -567,8 +591,59 @@ const Settings: React.FC = () => {
                 sx={{ mb: 2, alignItems: 'flex-start' }}
               />
 
-              <Button variant="contained" sx={{ mt: 3 }}>
-                {t('settings.savePreferences')}
+              <Button
+                variant="contained"
+                sx={{ mt: 3 }}
+                onClick={async () => {
+                  setPrefsError("");
+                  setPrefsSuccess("");
+                  // Do not send request if nothing changed
+                  const hasAutoApproveChanged =
+                    initialAutoApprove === null || autoApprove !== initialAutoApprove;
+                  const hasEmailNotificationsChanged =
+                    initialEmailNotifications === null || emailNotifications !== initialEmailNotifications;
+                  if (!hasAutoApproveChanged && !hasEmailNotificationsChanged) {
+                    return;
+                  }
+
+                  setPrefsSaving(true);
+                  try {
+                    const payload: {
+                      autoApproveHighConfidence?: boolean;
+                      emailNotificationsOnApproval?: boolean;
+                    } = {};
+
+                    if (hasAutoApproveChanged) {
+                      payload.autoApproveHighConfidence = autoApprove;
+                    }
+                    if (hasEmailNotificationsChanged) {
+                      payload.emailNotificationsOnApproval = emailNotifications;
+                    }
+
+                    const res = await apiClient.patch<{
+                      autoApproveHighConfidence: boolean;
+                      emailNotificationsOnApproval: boolean;
+                    }>(
+                      "/api/organizations/preferences",
+                      payload,
+                    );
+                    setAutoApprove(res.data.autoApproveHighConfidence);
+                    setEmailNotifications(res.data.emailNotificationsOnApproval);
+                    setInitialAutoApprove(res.data.autoApproveHighConfidence);
+                    setInitialEmailNotifications(res.data.emailNotificationsOnApproval);
+                    setPrefsSuccess(t("settings.preferencesSaved"));
+                  } catch (err: any) {
+                    const message =
+                      err?.response?.data?.error ??
+                      t("settings.preferencesSaveFailed");
+                    setPrefsError(message);
+                  } finally {
+                    setPrefsSaving(false);
+                  }
+                }}
+                disabled={prefsSaving}
+              >
+                {prefsSaving ? <CircularProgress size={24} color="inherit" /> : t('settings.savePreferences')}
               </Button>
             </Box>
           </CardContent>

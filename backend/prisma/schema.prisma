@@ -9,21 +9,43 @@ datasource db {
 }
 
 model Organization {
-  id              String       @id @default(uuid())
-  name            String       @unique
-  address         String?
-  billingEmail    String?
-  ownerId         String?      @unique
-  owner           User?        @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  invitationLimit Int?
-  createdAt       DateTime     @default(now())
-  users           User[]
-  invitations     Invitation[]
-  Folder          Folder[]
-  activities      Activity[]
+  id                           String       @id @default(uuid())
+  name                         String       @unique
+  address                      String?
+  billingEmail                 String?
+  ownerId                      String?      @unique
+  owner                        User?        @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  invitationLimit              Int?
+  createdAt                    DateTime     @default(now())
+  users                        User[]
+  invitations                  Invitation[]
+  Folder                       Folder[]
+  activities                   Activity[]
+  autoApproveHighConfidence    Boolean      @default(false)
+  emailNotificationsOnApproval Boolean      @default(true)
+  subscriptionPlan             SubscriptionPlan @default(starter)
+  stripeCustomerId             String?
+  stripeSubscriptionId         String?
+  currentPeriodStart           DateTime?
+  currentPeriodEnd             DateTime?
+  monthlyInvoiceLimit          Int          @default(500)
+  invoicesUsedThisPeriod       Int          @default(0)
+  subscriptionStatus           SubscriptionStatus @default(active)
 
   @@index([name])
   @@index([ownerId])
+}
+
+enum SubscriptionPlan {
+  starter
+  pro
+  enterprise
+}
+
+enum SubscriptionStatus {
+  active
+  past_due
+  canceled
 }
 
 model User {

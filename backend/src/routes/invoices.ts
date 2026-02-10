@@ -7,6 +7,7 @@ import prisma from "../db/index.js";
 import { upload, getUploadPath } from "../middleware/upload.js";
 import { extractInvoice } from "../services/extractionService.js";
 import { logActivity } from "../services/activityLogger.js";
+import { assertCanProcessInvoices, incrementInvoicesUsed, UsageLimitError } from "../services/usageLimits.js";
 import { config } from "../config.js";
 import ExcelJS from "exceljs";
 import {
@@ -151,6 +152,31 @@ router.post("/upload", upload.array("files", 20), async (req: Request, res: Resp
     const userId = req.user?.id ?? null;
     const organizationId = req.user?.organizationId ?? null;
     const userName = req.user?.email ?? null;
+    if (!organizationId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Enforce subscription and monthly invoice limits
+    try {
+      await assertCanProcessInvoices(organizationId, files.length);
+    } catch (err) {
+      if (err instanceof UsageLimitError) {
+        if (err.code === "SUBSCRIPTION_INACTIVE") {
+          return res.status(402).json({
+            error:
+              "Your subscription is not active. Please update your plan to continue processing invoices.",
+            code: err.code,
+          });
+        }
+        if (err.code === "MONTHLY_LIMIT_REACHED") {
+          return res.status(402).json({
+            error: "The monthly invoice limit has been reached for your plan.",
+            code: err.code,
+          });
+        }
+      }
+      throw err;
+    }
     const created: { id: string; filename: string }[] = [];
     for (const f of files) {
       const invoice = await prisma.invoice.create({
@@ -186,6 +212,9 @@ router.post("/upload", upload.array("files", 20), async (req: Request, res: Resp
         }
       });
     }
+
+    await incrementInvoicesUsed(organizationId, files.length);
+
     res.json({ ids: created.map((c) => c.id), files: created });
   } catch (err) {
     console.error(err);
@@ -250,6 +279,65 @@ async function extractAndPersistInvoiceForUser(
     create: fieldsCreate as unknown as Prisma.InvoiceFieldsCreateInput,
     update: fieldsUpdate as unknown as Prisma.InvoiceFieldsUpdateInput,
   });
+  // Auto-approve based on high confidence, if enabled at organization level
+  try {
+    const organizationId = req.user?.organizationId ?? null;
+    const userId = req.user?.id ?? null;
+    const userName = req.user?.email ?? null;
+
+    if (organizationId && userId && invoice.status === "pending") {
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+      });
+
+      const autoApproveHighConfidence =
+        (org as { autoApproveHighConfidence?: boolean } | null)?.autoApproveHighConfidence ?? false;
+
+      if (autoApproveHighConfidence) {
+        const scores = extracted.confidenceScores ?? {};
+        const values = Object.values(scores).filter((v) => typeof v === "number" && !Number.isNaN(v));
+        if (values.length > 0) {
+          const minScore = Math.min(...values);
+          // Support both 0-1 and 0-100 scales
+          const normalized = minScore > 1 ? minScore : minScore * 100;
+
+          if (normalized >= 95) {
+            await prisma.$transaction(async (tx) => {
+              await tx.invoice.update({
+                where: { id: invoiceId },
+                data: { status: "approved" },
+              });
+
+              await tx.approval.create({
+                data: {
+                  invoiceId,
+                  approvedBy: userName ?? "system",
+                  action: "approved",
+                },
+              });
+            });
+
+            logActivity({
+              organizationId,
+              userId,
+              userName,
+              actionType: "INVOICE_APPROVED",
+              entityType: "INVOICE",
+              entityId: invoiceId,
+              entityName: invoice.filename,
+              metadata: {
+                autoApproved: true,
+                confidenceScores: extracted.confidenceScores,
+              },
+            });
+          }
+        }
+      }
+    }
+  } catch (autoErr) {
+    // Do not fail extraction if auto-approval logic encounters an error
+    console.error("Auto-approve high confidence failed for invoice", invoiceId, autoErr);
+  }
 
   return extracted;
 }
@@ -328,6 +416,7 @@ router.post("/:id/extract", async (req: Request, res: Response) => {
  *                 pending: { type: integer }
  *                 approved: { type: integer }
  *                 needs_review: { type: integer }
+ *                 avgProcessingTimeSeconds: { type: number, nullable: true, description: 'Average seconds from invoice creation to extraction' }
  *       401:
  *         description: Unauthorized
  *       500:
@@ -336,13 +425,34 @@ router.post("/:id/extract", async (req: Request, res: Response) => {
 router.get("/stats", async (req: Request, res: Response) => {
   try {
     const baseWhere = (req.user ? { userId: req.user.id } : {}) as Prisma.InvoiceWhereInput;
-    const [total, pending, approved, needsReview] = await Promise.all([
+    const [total, pending, approved, needsReview, invoicesWithExtraction] = await Promise.all([
       prisma.invoice.count({ where: baseWhere }),
       prisma.invoice.count({ where: { ...baseWhere, status: "pending" } }),
       prisma.invoice.count({ where: { ...baseWhere, status: "approved" } }),
       prisma.invoice.count({ where: { ...baseWhere, status: "needs_review" } }),
+      prisma.invoice.findMany({
+        where: { ...baseWhere, fields: { extractedAt: { not: null } } },
+        select: { createdAt: true, fields: { select: { extractedAt: true } } },
+      }),
     ]);
-    res.json({ total, pending, approved, needs_review: needsReview });
+
+    let avgProcessingTimeSeconds: number | null = null;
+    if (invoicesWithExtraction.length > 0) {
+      const totalSeconds = invoicesWithExtraction.reduce((sum, inv) => {
+        const ext = inv.fields?.extractedAt;
+        if (!ext) return sum;
+        return sum + (new Date(ext).getTime() - new Date(inv.createdAt).getTime()) / 1000;
+      }, 0);
+      avgProcessingTimeSeconds = totalSeconds / invoicesWithExtraction.length;
+    }
+
+    res.json({
+      total,
+      pending,
+      approved,
+      needs_review: needsReview,
+      avgProcessingTimeSeconds,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: (err as Error).message });

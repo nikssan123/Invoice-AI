@@ -3,12 +3,20 @@ import crypto from "crypto";
 import prisma from "../db/index.js";
 import { config } from "../config.js";
 import { sendInvitationEmail } from "../services/email.js";
+import { PLAN_CONFIG } from "../config/billing.js";
 
 const router = Router();
 const INVITATION_EXPIRY_DAYS = 7;
 
 type CreateInvitationBody = { email: string; role?: string };
 type UpdateOrganizationBody = { name?: string; address?: string; billingEmail?: string };
+type UpdatePreferencesBody = { autoApproveHighConfidence?: boolean; emailNotificationsOnApproval?: boolean };
+type UpdateEnterpriseBillingBody = {
+  monthlyInvoiceLimit?: number;
+  subscriptionStatus?: "active" | "past_due" | "canceled";
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+};
 
 /**
  * @openapi
@@ -41,6 +49,111 @@ router.get("/me", async (req: Request, res: Response) => {
     if (!organization) return res.status(404).json({ error: "Organization not found" });
 
     res.json(organization);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+/**
+ * @openapi
+ * /api/organizations/preferences:
+ *   get:
+ *     summary: Get organization-level processing preferences
+ *     tags:
+ *       - Organizations
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Preferences for the current user's organization
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get("/preferences", async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) return res.status(401).json({ error: "Unauthorized" });
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+
+    res.json({
+      autoApproveHighConfidence:
+        (organization as { autoApproveHighConfidence?: boolean } | null)?.autoApproveHighConfidence ?? false,
+      emailNotificationsOnApproval:
+        (organization as { emailNotificationsOnApproval?: boolean } | null)?.emailNotificationsOnApproval ?? true,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+/**
+ * @openapi
+ * /api/organizations/preferences:
+ *   patch:
+ *     summary: Update organization-level processing preferences (admin only)
+ *     tags:
+ *       - Organizations
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               autoApproveHighConfidence:
+ *                 type: boolean
+ *                 description: "If true, invoices with very high extraction confidence will be auto-approved."
+ *               emailNotificationsOnApproval:
+ *                 type: boolean
+ *                 description: "If true, email notifications will be sent when invoices are approved."
+ *     responses:
+ *       200:
+ *         description: Updated preferences
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Only organization admins can update preferences
+ *       500:
+ *         description: Server error
+ */
+router.patch("/preferences", async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.user?.organizationId;
+    const role = req.user?.role;
+    if (!organizationId) return res.status(401).json({ error: "Unauthorized" });
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Only organization admins can update preferences" });
+    }
+
+    const body = req.body as UpdatePreferencesBody;
+    const data: { autoApproveHighConfidence?: boolean; emailNotificationsOnApproval?: boolean } = {};
+
+    if (typeof body.autoApproveHighConfidence === "boolean") {
+      data.autoApproveHighConfidence = body.autoApproveHighConfidence;
+    }
+    if (typeof body.emailNotificationsOnApproval === "boolean") {
+      data.emailNotificationsOnApproval = body.emailNotificationsOnApproval;
+    }
+
+    const organization = await prisma.organization.update({
+      where: { id: organizationId },
+      data,
+    });
+
+    res.json({
+      autoApproveHighConfidence:
+        (organization as { autoApproveHighConfidence?: boolean } | null)?.autoApproveHighConfidence ?? false,
+      emailNotificationsOnApproval:
+        (organization as { emailNotificationsOnApproval?: boolean } | null)?.emailNotificationsOnApproval ?? true,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: (err as Error).message });
@@ -103,6 +216,108 @@ router.patch("/me", async (req: Request, res: Response) => {
     });
 
     res.json(organization);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+/**
+ * @openapi
+ * /api/organizations/me/billing:
+ *   patch:
+ *     summary: Update enterprise billing settings for current organization (admin only)
+ *     description: |
+ *       Only allowed when subscriptionPlan is enterprise. Used to manually configure
+ *       monthly invoice limits, subscription status, and billing period dates.
+ *     tags:
+ *       - Organizations
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               monthlyInvoiceLimit: { type: integer, minimum: 1 }
+ *               subscriptionStatus:
+ *                 type: string
+ *                 enum: [active, past_due, canceled]
+ *               currentPeriodStart:
+ *                 type: string
+ *                 format: date-time
+ *               currentPeriodEnd:
+ *                 type: string
+ *                 format: date-time
+ *     responses:
+ *       200:
+ *         description: Updated enterprise billing settings
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Only admins on an enterprise plan can update billing
+ *       500:
+ *         description: Server error
+ */
+router.patch("/me/billing", async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.user?.organizationId;
+    const role = req.user?.role;
+    if (!organizationId) return res.status(401).json({ error: "Unauthorized" });
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Only organization admins can update billing" });
+    }
+
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+    if (!org) {
+      return res.status(404).json({ error: "Organization not found" });
+    }
+    if (org.subscriptionPlan !== "enterprise") {
+      return res.status(403).json({ error: "Enterprise billing can only be updated for enterprise plan" });
+    }
+
+    const body = req.body as UpdateEnterpriseBillingBody;
+    const data: {
+      monthlyInvoiceLimit?: number;
+      subscriptionStatus?: "active" | "past_due" | "canceled";
+      currentPeriodStart?: Date | null;
+      currentPeriodEnd?: Date | null;
+    } = {};
+
+    if (typeof body.monthlyInvoiceLimit === "number" && body.monthlyInvoiceLimit > 0) {
+      data.monthlyInvoiceLimit = body.monthlyInvoiceLimit;
+    }
+    if (
+      body.subscriptionStatus === "active" ||
+      body.subscriptionStatus === "past_due" ||
+      body.subscriptionStatus === "canceled"
+    ) {
+      data.subscriptionStatus = body.subscriptionStatus;
+    }
+    if (typeof body.currentPeriodStart === "string") {
+      data.currentPeriodStart = new Date(body.currentPeriodStart);
+    }
+    if (typeof body.currentPeriodEnd === "string") {
+      data.currentPeriodEnd = new Date(body.currentPeriodEnd);
+    }
+
+    const updated = await prisma.organization.update({
+      where: { id: organizationId },
+      data,
+    });
+
+    res.json({
+      id: updated.id,
+      subscriptionPlan: updated.subscriptionPlan,
+      subscriptionStatus: updated.subscriptionStatus,
+      monthlyInvoiceLimit: updated.monthlyInvoiceLimit,
+      currentPeriodStart: updated.currentPeriodStart,
+      currentPeriodEnd: updated.currentPeriodEnd,
+      invoicesUsedThisPeriod: updated.invoicesUsedThisPeriod,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: (err as Error).message });
