@@ -240,6 +240,7 @@
     "extractionComplete": "Extraction complete. You can now open the invoices.",
     "exportSuccess": "Excel export started. Your download should begin shortly.",
     "exportError": "Failed to export invoices.",
+    "noInvoicesToExport": "There are no invoices to export. Only approved invoices with completed data extraction can be exported.",
     "exportConfigTitle": "Customize Excel columns",
     "exportConfigDescription": "Edit the column names for your Excel export. Your preferences will be saved for future exports.",
     "exportColumnDefaultLabel": "Default",

@@ -7,8 +7,8 @@ services:
       POSTGRES_DB: invoicedesk
       POSTGRES_USER: invoicedesk
       POSTGRES_PASSWORD: changeme
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
 
@@ -25,6 +25,14 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./backend/.env
+    environment:
+      # Override DATABASE_URL and OCR_SERVICE_URL so the container uses the db service, not localhost
+      DATABASE_URL: postgresql://invoicedesk:changeme@db:5432/invoicedesk?schema=public
+      OCR_SERVICE_URL: http://ocr-service:8000
+      # Public app URL for Stripe checkout/cancel redirects and emails (override in backend/.env if different)
+      APP_URL: https://invoicedesk.org
+      # Logo shown in emails (must be absolute URL; defaults to APP_URL/InvoiceLogo.png if unset)
+      EMAIL_LOGO_URL: https://invoicedesk.org/InvoiceLogo.png
     depends_on:
       - db
       - ocr-service
@@ -36,14 +44,13 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    env_file:
-      - ./frontend/.env
     depends_on:
       - backend
     ports: []
 
   nginx:
     image: nginx:alpine
+    restart: unless-stopped
     depends_on:
       - frontend
       - backend

@@ -627,8 +627,13 @@ const Invoices: React.FC = () => {
           } else if (typeof respData === 'object') {
             parsed = respData;
           }
-          if (parsed && typeof (parsed as { error?: string }).error === 'string') {
-            message = (parsed as { error: string }).error;
+          const errPayload = parsed as { error?: string; errorCode?: string };
+          if (typeof errPayload.error === 'string') {
+            if (errPayload.errorCode === 'NO_INVOICES_TO_EXPORT') {
+              message = t('invoices.noInvoicesToExport');
+            } else {
+              message = errPayload.error;
+            }
           }
         } catch {
           // If parsing fails, fall back to a generic message

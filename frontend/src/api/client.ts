@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+// Use VITE_API_URL when provided; otherwise default to same-origin (relative URLs)
+// This makes the build portable across hosts (Synology, AWS, etc.).
+const baseURL = import.meta.env.VITE_API_URL ?? '';
 
 export const apiClient = axios.create({
   baseURL,

@@ -13,8 +13,16 @@ const BRAND_NAME = "Invoice Desk";
 
 export function buildEmailHtml(options: EmailTemplateOptions): string {
   const baseUrl = (config.appUrl ?? "").replace(/\/$/, "");
-  const logoUrl = `${baseUrl}/InvoiceLogo.png`;
+  const logoUrl =
+    config.emailLogoUrl?.trim() || (baseUrl ? `${baseUrl}/InvoiceLogo.png` : "");
+  const showLogo = Boolean(logoUrl && (logoUrl.startsWith("http://") || logoUrl.startsWith("https://")));
   const { title, introText, bodyHtml, ctaLabel, ctaUrl, secondaryText } = options;
+
+  const logoImgHtml = showLogo
+    ? `<img src="${logoUrl}" alt="${BRAND_NAME}" width="40" height="40" style="border-radius:8px; display:inline-block; vertical-align:middle; object-fit:contain;" />`
+    : "";
+  const brandNameMargin = showLogo ? " margin-left:8px;" : "";
+  const headerBrandHtml = `${logoImgHtml}<span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:18px; font-weight:700; color:#111827;${brandNameMargin}">${BRAND_NAME}</span>`;
 
   const buttonHtml =
     ctaLabel && ctaUrl
@@ -52,8 +60,7 @@ export function buildEmailHtml(options: EmailTemplateOptions): string {
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                   <tr>
                     <td style="display:flex; align-items:center;">
-                      <img src="${logoUrl}" alt="${BRAND_NAME}" width="32" height="32" style="border-radius:8px; display:inline-block; vertical-align:middle; object-fit:contain;" />
-                      <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:18px; font-weight:700; color:#111827; margin-left:8px;">${BRAND_NAME}</span>
+                      ${headerBrandHtml}
                     </td>
                   </tr>
                 </table>

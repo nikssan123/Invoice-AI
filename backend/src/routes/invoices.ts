@@ -1742,6 +1742,7 @@ router.post("/export", async (req: Request, res: Response) => {
     if (filtered.length === 0) {
       return res.status(400).json({
         error: "There are no invoices to export. Only approved invoices with completed data extraction can be exported.",
+        errorCode: "NO_INVOICES_TO_EXPORT",
       });
     }
 

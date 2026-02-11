@@ -14,6 +14,8 @@ export interface Config {
   smtpClientSecret: string;
   smtpRefreshToken: string;
   appUrl: string;
+  /** Full URL for the logo in emails (e.g. https://invoicedesk.org/InvoiceLogo.png). If unset, uses appUrl + /InvoiceLogo.png */
+  emailLogoUrl?: string;
   emailFrom?: string;
   contactEmail?: string;
 }
@@ -31,6 +33,7 @@ export const config: Config = {
   smtpClientSecret: process.env.SMTP_CLIENT_SECRET ?? "",
   smtpRefreshToken: process.env.SMTP_REFRESH_TOKEN ?? "",
   appUrl: process.env.APP_URL ?? "http://localhost:4173",
+  emailLogoUrl: process.env.EMAIL_LOGO_URL,
   emailFrom: process.env.EMAIL_FROM,
   contactEmail: process.env.CONTACT_EMAIL,
 };
