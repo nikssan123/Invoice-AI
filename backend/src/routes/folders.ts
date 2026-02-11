@@ -245,11 +245,11 @@ router.delete("/:id", async (req: Request, res: Response) => {
 
     const folderIds = Array.from(subtreeIds);
 
-    // Find all invoices in these folders
+    // Find all invoices in these folders (org-level visibility)
     const invoices = await prisma.invoice.findMany({
       where: {
         folderId: { in: folderIds },
-        ...(req.user && { userId: req.user.id }),
+        organizationId: orgId,
       },
     });
 

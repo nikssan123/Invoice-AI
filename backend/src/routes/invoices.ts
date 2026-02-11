@@ -192,6 +192,7 @@ router.post("/upload", upload.array("files", 20), async (req: Request, res: Resp
           filePath: f.filename,
           mimeType: f.mimetype,
           status: "pending",
+          organizationId,
           ...(userId && { userId }),
         } as never,
       });
@@ -230,6 +231,8 @@ router.post("/upload", upload.array("files", 20), async (req: Request, res: Resp
 });
 
 function canAccessInvoice(invoice: unknown, req: Request): boolean {
+  const orgId = (invoice as { organizationId?: string | null }).organizationId;
+  if (orgId != null) return req.user?.organizationId === orgId;
   const uid = (invoice as { userId?: string | null }).userId;
   if (uid == null) return true;
   return req.user?.id === uid;
@@ -431,7 +434,7 @@ router.post("/:id/extract", async (req: Request, res: Response) => {
  */
 router.get("/stats", async (req: Request, res: Response) => {
   try {
-    const baseWhere = (req.user ? { userId: req.user.id } : {}) as Prisma.InvoiceWhereInput;
+    const baseWhere = (req.user ? { organizationId: req.user.organizationId } : {}) as Prisma.InvoiceWhereInput;
     const [total, pending, approved, needsReview, invoicesWithExtraction] = await Promise.all([
       prisma.invoice.count({ where: baseWhere }),
       prisma.invoice.count({ where: { ...baseWhere, status: "pending" } }),
@@ -514,7 +517,7 @@ router.get("/tree", async (req: Request, res: Response) => {
     });
 
     const dbInvoices = await prisma.invoice.findMany({
-      where: { ...(req.user && { userId: req.user.id }) },
+      where: { organizationId: orgId },
       include: { fields: true, folder: true },
       orderBy: { createdAt: "asc" },
     });
@@ -665,8 +668,8 @@ router.get("/", async (req: Request, res: Response) => {
     const { status } = req.query;
     const where = (
       status && typeof status === "string"
-        ? { status, ...(req.user && { userId: req.user.id }) }
-        : { ...(req.user && { userId: req.user.id }) }
+        ? { status, ...(req.user && { organizationId: req.user.organizationId }) }
+        : { ...(req.user && { organizationId: req.user.organizationId }) }
     ) as Prisma.InvoiceWhereInput;
     const invoices = await prisma.invoice.findMany({
       where,
@@ -746,11 +749,11 @@ router.post("/bulk-move", async (req: Request, res: Response) => {
       }
     }
 
-    // Only move invoices the current user can access
+    // Only move invoices in the current user's organization
     const accessibleInvoices = await prisma.invoice.findMany({
       where: {
         id: { in: invoiceIds },
-        ...(req.user && { userId: req.user.id }),
+        organizationId: orgId,
       } as Prisma.InvoiceWhereInput,
     });
 
@@ -1701,6 +1704,7 @@ router.post("/export", async (req: Request, res: Response) => {
       const folderIdList = Array.from(resolvedFolderIds);
 
       const whereFolder: Prisma.InvoiceWhereInput = {
+        organizationId: orgId,
         ...(includeRootInvoices
           ? {
               OR: [
@@ -1711,7 +1715,6 @@ router.post("/export", async (req: Request, res: Response) => {
           : folderIdList.length > 0
           ? { folderId: { in: folderIdList } }
           : { folderId: null }),
-        userId,
       };
 
       const invoicesInFolders = await prisma.invoice.findMany({
@@ -1727,8 +1730,8 @@ router.post("/export", async (req: Request, res: Response) => {
 
     const where: Prisma.InvoiceWhereInput = {
       id: { in: candidateInvoiceIds },
+      organizationId: orgId,
       ...(onlyConfirmed ? { status: "approved" } : {}),
-      userId,
     };
 
     const invoicesForExport = await prisma.invoice.findMany({

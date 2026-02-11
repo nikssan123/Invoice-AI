@@ -21,6 +21,7 @@ model Organization {
   invitations                  Invitation[]
   Folder                       Folder[]
   activities                   Activity[]
+  invoices                     Invoice[]
   autoApproveHighConfidence    Boolean      @default(false)
   emailNotificationsOnApproval Boolean      @default(true)
   subscriptionPlan             SubscriptionPlan @default(starter)
@@ -95,6 +96,8 @@ model Invoice {
   mimeType        String
   status          String               @default("pending") // pending | approved | needs_review
   createdAt       DateTime             @default(now())
+  organizationId  String
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId          String?
   user            User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   fields          InvoiceFields?
@@ -106,6 +109,7 @@ model Invoice {
   @@index([status])
   @@index([userId])
   @@index([folderId])
+  @@index([organizationId])
 }
 
 model InvoiceChatMessage {
