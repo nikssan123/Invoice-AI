@@ -5,6 +5,7 @@ import { TrendingUp as TrendingUpIcon, Receipt as ReceiptIcon, CalendarToday as 
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '@/api/client';
+import { getPlanFeatureKeys, PublicPlanKey } from '@/data/planDisplayConfig';
 import { useAuth } from '@/context/AuthContext';
 
 type BillingSummary = {
@@ -392,7 +393,7 @@ const UsageBilling: React.FC = () => {
                 {t('usageBilling.availablePlans')}
               </Typography>
               <Grid container spacing={2}>
-                {(['starter', 'pro', 'enterprise'] as const).map((planKey) => {
+                {(['starter', 'pro', 'enterprise'] as const).map((planKey: PublicPlanKey) => {
                   const isCurrent = summary?.plan === planKey && !summary?.isTrial;
                   const isSubscriptionCanceled = summary?.subscriptionStatus === 'canceled';
                   const cancelAtPeriodEnd = summary?.cancelAtPeriodEnd === true;
@@ -405,28 +406,7 @@ const UsageBilling: React.FC = () => {
                     planKey === 'starter' ? 'Starter' : planKey === 'pro' ? 'Pro' : 'Enterprise';
                   const isEnterprise = planKey === 'enterprise';
 
-                  const featureKeys =
-                    planKey === 'starter'
-                      ? [
-                          'usageBilling.planStarterFeature1',
-                          'usageBilling.planStarterFeature2',
-                          'usageBilling.planStarterFeature3',
-                          // Chat: up to 10 questions per invoice about extracted data
-                          'usageBilling.planStarterChatFeature',
-                        ]
-                      : planKey === 'pro'
-                        ? [
-                            'usageBilling.planProFeature1',
-                            'usageBilling.planProFeature2',
-                            'usageBilling.planProFeature3',
-                            // Chat: up to 25 questions per invoice + broader accounting questions
-                            'usageBilling.planProChatFeature',
-                          ]
-                        : [
-                            'usageBilling.planEnterpriseFeature1',
-                            'usageBilling.planEnterpriseFeature2',
-                            'usageBilling.planEnterpriseFeature3',
-                          ];
+                  const featureKeys = getPlanFeatureKeys(planKey);
                   const features = featureKeys.map((key) => t(key));
 
                   const buttonLabel = canCancelScheduledDowngrade

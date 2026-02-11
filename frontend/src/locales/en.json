@@ -55,7 +55,7 @@
     },
     "demoSection": {
     "title": "See it in action",
-    "subtitle": "Watch how Invoice Desk processes documents in real time.",
+    "subtitle": "Explore key screens from Invoice Desk and how it fits into your workflow.",
       "clickToWatch": "Click to watch demo video",
       "tryYourself": "Try it yourself"
     },
@@ -460,6 +460,7 @@
     "contactName": "Name (optional)",
     "contactMessage": "Message (optional)",
     "contactSend": "Send",
+    "contactSubmit": "Send message",
     "contactSuccess": "Message sent. We'll get back to you soon.",
     "contactError": "Failed to send. Please try again.",
     "downgrade": "Downgrade",

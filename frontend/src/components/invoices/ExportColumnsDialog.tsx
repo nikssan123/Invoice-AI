@@ -59,6 +59,7 @@ const ExportColumnsDialog: React.FC<Props> = ({ open, columns, loading, onClose,
             display: 'flex',
             flexDirection: 'column',
             gap: 1.5,
+            pt: 2
           }}
         >
           {localColumns.map((col) => (

@@ -991,6 +991,10 @@ const Invoices: React.FC = () => {
             onSelectAll={handleSelectAllInvoices}
             onDeleteInvoice={handleDeleteInvoice}
             onMoveInvoice={handleMoveInvoice}
+            onFolderClick={(folderId) => {
+              setSelectedFolderId(folderId);
+              setSelectedInvoices(new Set());
+            }}
           />
         </Box>
       </Box>

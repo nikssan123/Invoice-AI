@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Container,
   Typography,
@@ -13,6 +13,11 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -24,12 +29,41 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { apiClient } from '@/api/client';
 import PublicLayout from '@/components/layout/PublicLayout';
-import { pricingPlans } from '@/data/mockData';
+import { PUBLIC_PLANS, getPlanFeatureKeys, PublicPlanKey } from '@/data/planDisplayConfig';
+import demo1 from '../../public/Demo/dashboard.png';
+import demo2 from '../../public/Demo/invoice-list.png';
+import demo3 from '../../public/Demo/invoice-detail.png';
+import demo4 from '../../public/Demo/invoice-chat.png';
+
+const demoScreens = [
+  demo1,
+  demo2,
+  demo3,
+  demo4,
+];
 
 const Landing: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+
+  const [activeDemoIndex, setActiveDemoIndex] = useState(0);
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactName, setContactName] = useState('');
+  const [contactMessage, setContactMessage] = useState('');
+  const [contactSending, setContactSending] = useState(false);
+  const [contactSubmitError, setContactSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (demoScreens.length <= 1) return;
+    const id = setInterval(() => {
+      setActiveDemoIndex((prev) => (prev + 1) % demoScreens.length);
+    }, 5000);
+    return () => clearInterval(id);
+  }, []);
 
   const features = [
     {
@@ -143,7 +177,7 @@ const Landing: React.FC = () => {
                       <Box sx={{ mb: 2 }}>
                         <Typography variant="caption" color="text.secondary">{t('landing.demo.supplierName')}</Typography>
                         <Box sx={{ p: 1, bgcolor: 'success.50', borderRadius: 1, border: '1px solid', borderColor: 'success.200' }}>
-                          <Typography variant="body2">Acme Corporation</Typography>
+                          <Typography variant="body2">Test Corporation</Typography>
                         </Box>
                       </Box>
                       <Box sx={{ mb: 2 }}>
@@ -223,7 +257,7 @@ const Landing: React.FC = () => {
             sx={{
               borderRadius: 3,
               overflow: 'hidden',
-              maxWidth: 900,
+              maxWidth: 1100,
               mx: 'auto',
             }}
           >
@@ -232,43 +266,62 @@ const Landing: React.FC = () => {
               <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#FFBD2E' }} />
               <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#27C93F' }} />
             </Box>
-            <Box sx={{
-              height: 400,
-              bgcolor: 'grey.100',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexDirection: 'column',
-              gap: 2,
-            }}>
-              <Box sx={{
-                width: 80,
-                height: 80,
-                borderRadius: '50%',
-                bgcolor: 'primary.main',
+            <Box
+              sx={{
+                height: { xs: 360, md: 520 },
+                bgcolor: 'grey.100',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'transform 0.2s',
-                '&:hover': {
-                  transform: 'scale(1.1)',
-                },
-              }}>
-                <Box
-                  sx={{
-                    width: 0,
-                    height: 0,
-                    borderTop: '15px solid transparent',
-                    borderBottom: '15px solid transparent',
-                    borderLeft: '25px solid white',
-                    ml: 1,
-                  }}
-                />
+                p: { xs: 1.5, md: 3 },
+              }}
+            >
+              <Box
+                sx={{
+                  position: 'relative',
+                  width: '100%',
+                  height: '100%',
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                }}
+              >
+                {demoScreens.map((src, index) => (
+                  <Box
+                    key={src}
+                    component="img"
+                    src={src}
+                    alt="Invoice Desk demo screen"
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      backgroundColor: 'grey.100',
+                      opacity: index === activeDemoIndex ? 1 : 0,
+                      transition: 'opacity 500ms ease-in-out',
+                    }}
+                  />
+                ))}
               </Box>
-              <Typography variant="body1" color="text.secondary">
-                {t('landing.demoSection.clickToWatch')}
-              </Typography>
+              {demoScreens.length > 1 && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, mt: 2 }}>
+                  {demoScreens.map((_, index) => (
+                    <Box
+                      key={index}
+                      onClick={() => setActiveDemoIndex(index)}
+                      sx={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        bgcolor: index === activeDemoIndex ? 'primary.main' : 'grey.400',
+                        cursor: 'pointer',
+                      }}
+                    />
+                  ))}
+                </Box>
+              )}
             </Box>
           </Paper>
 
@@ -297,90 +350,211 @@ const Landing: React.FC = () => {
           </Box>
 
           <Grid container spacing={4} justifyContent="center">
-            {pricingPlans.map((plan, index) => (
-              <Grid size={{ xs: 12, sm: 6, md: 4 }} key={index}>
-                <Card
-                  sx={{
-                    height: '100%',
-                    position: 'relative',
-                    border: plan.highlighted ? '2px solid' : '1px solid',
-                    borderColor: plan.highlighted ? 'primary.main' : 'divider',
-                    transform: plan.highlighted ? 'scale(1.05)' : 'none',
-                    zIndex: plan.highlighted ? 1 : 0,
-                  }}
-                >
-                  {plan.highlighted && (
-                    <Box
-                      sx={{
-                        position: 'absolute',
-                        top: -12,
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                      }}
-                    >
-                      <Chip label={t('landing.pricing.mostPopular')} color="primary" size="small" />
-                    </Box>
-                  )}
-                  <CardContent sx={{ p: 4 }}>
-                    <Typography variant="h5" sx={{ mb: 1, fontWeight: 700 }}>
-                      {plan.name === 'Starter' ? t('landing.pricing.planStarter') : plan.name === 'Pro' ? t('landing.pricing.planPro') : t('landing.pricing.planEnterprise')}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3, minHeight: 40 }}>
-                      {plan.name === 'Starter' ? t('landing.pricing.planStarterDesc') : plan.name === 'Pro' ? t('landing.pricing.planProDesc') : t('landing.pricing.planEnterpriseDesc')}
-                    </Typography>
-                    <Box sx={{ mb: 3 }}>
-                      {plan.price !== null ? (
-                        <>
-                          <Typography
-                            component="span"
-                            variant="h3"
-                            sx={{ fontWeight: 700 }}
-                          >
-                            ${plan.price}
+            {PUBLIC_PLANS.map(({ key, price, period, highlighted }) => {
+              const planKey: PublicPlanKey = key;
+              const displayName =
+                planKey === 'starter'
+                  ? t('landing.pricing.planStarter')
+                  : planKey === 'pro'
+                    ? t('landing.pricing.planPro')
+                    : t('landing.pricing.planEnterprise');
+              const description =
+                planKey === 'starter'
+                  ? t('landing.pricing.planStarterDesc')
+                  : planKey === 'pro'
+                    ? t('landing.pricing.planProDesc')
+                    : t('landing.pricing.planEnterpriseDesc');
+              const featureKeys = getPlanFeatureKeys(planKey);
+              const features = featureKeys.map((featureKey) => t(featureKey));
+
+              return (
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={planKey}>
+                  <Card
+                    sx={{
+                      height: '100%',
+                      position: 'relative',
+                      border: highlighted ? '2px solid' : '1px solid',
+                      borderColor: highlighted ? 'primary.main' : 'divider',
+                      transform: highlighted ? 'scale(1.05)' : 'none',
+                      zIndex: highlighted ? 1 : 0,
+                    }}
+                  >
+                    {highlighted && (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          // top: -12,
+                          mt: 1,
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                        }}
+                      >
+                        <Chip label={t('landing.pricing.mostPopular')} color="primary" size="small" />
+                      </Box>
+                    )}
+                    <CardContent sx={{ p: 4 }}>
+                      <Typography variant="h5" sx={{ mb: 1, fontWeight: 700 }}>
+                        {displayName}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3, minHeight: 40 }}>
+                        {description}
+                      </Typography>
+                      <Box sx={{ mb: 3 }}>
+                        {price !== null ? (
+                          <>
+                            <Typography
+                              component="span"
+                              variant="h3"
+                              sx={{ fontWeight: 700 }}
+                            >
+                              €{price}
+                            </Typography>
+                            <Typography
+                              component="span"
+                              variant="body1"
+                              color="text.secondary"
+                            >
+                              /{period}
+                            </Typography>
+                          </>
+                        ) : (
+                          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                            {t('landing.pricing.contactUs')}
                           </Typography>
-                          <Typography
-                            component="span"
-                            variant="body1"
-                            color="text.secondary"
-                          >
-                            /{plan.period}
-                          </Typography>
-                        </>
-                      ) : (
-                        <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                          {t('landing.pricing.contactUs')}
-                        </Typography>
-                      )}
-                    </Box>
-                    <Button
-                      variant={plan.highlighted ? 'contained' : 'outlined'}
-                      fullWidth
-                      size="large"
-                      onClick={() => navigate('/signup')}
-                      sx={{ mb: 3 }}
-                    >
-                      {plan.price !== null ? t('landing.pricing.startFreeTrial') : t('landing.pricing.contactSales')}
-                    </Button>
-                    <List dense>
-                      {plan.features.map((feature, featureIndex) => (
-                        <ListItem key={featureIndex} sx={{ px: 0 }}>
-                          <ListItemIcon sx={{ minWidth: 32 }}>
-                            <CheckIcon color="success" fontSize="small" />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={feature}
-                            primaryTypographyProps={{ variant: 'body2' }}
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
+                        )}
+                      </Box>
+                      <Button
+                        variant={highlighted ? 'contained' : 'outlined'}
+                        fullWidth
+                        size="large"
+                        onClick={() => {
+                          if (planKey === 'enterprise') {
+                            setContactEmail('');
+                            setContactPhone('');
+                            setContactName('');
+                            setContactMessage('');
+                            setContactSubmitError(null);
+                            setContactDialogOpen(true);
+                          } else {
+                            navigate('/signup');
+                          }
+                        }}
+                        sx={{ mb: 3 }}
+                      >
+                        {price !== null
+                          ? planKey === 'enterprise'
+                            ? t('landing.pricing.contactSales')
+                            : t('landing.pricing.startFreeTrial')
+                          : t('landing.pricing.contactSales')}
+                      </Button>
+                      <List dense>
+                        {features.map((feature, featureIndex) => (
+                          <ListItem key={featureIndex} sx={{ px: 0 }}>
+                            <ListItemIcon sx={{ minWidth: 32 }}>
+                              <CheckIcon color="success" fontSize="small" />
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={feature}
+                              primaryTypographyProps={{ variant: 'body2' }}
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
           </Grid>
         </Container>
       </Box>
+
+      <Dialog
+        open={contactDialogOpen}
+        onClose={() => {
+          if (!contactSending) setContactDialogOpen(false);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>{t('usageBilling.contactDialogTitle')}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <TextField
+              label={t('usageBilling.contactEmail')}
+              type="email"
+              value={contactEmail}
+              onChange={(e) => setContactEmail(e.target.value)}
+              required
+              fullWidth
+              autoComplete="email"
+            />
+            <TextField
+              label={t('usageBilling.contactPhone')}
+              type="tel"
+              value={contactPhone}
+              onChange={(e) => setContactPhone(e.target.value)}
+              required
+              fullWidth
+              autoComplete="tel"
+            />
+            <TextField
+              label={t('usageBilling.contactName')}
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+              fullWidth
+              autoComplete="name"
+            />
+            <TextField
+              label={t('usageBilling.contactMessage')}
+              value={contactMessage}
+              onChange={(e) => setContactMessage(e.target.value)}
+              multiline
+              rows={3}
+              fullWidth
+            />
+            {contactSubmitError && (
+              <Typography variant="body2" color="error">
+                {contactSubmitError}
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setContactDialogOpen(false)} disabled={contactSending}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              const email = contactEmail.trim();
+              const phone = contactPhone.trim();
+              if (!email || !phone) {
+                setContactSubmitError(t('usageBilling.contactError'));
+                return;
+              }
+              setContactSending(true);
+              setContactSubmitError(null);
+              try {
+                await apiClient.post('/api/contact', {
+                  email,
+                  phone,
+                  name: contactName.trim() || undefined,
+                  message: contactMessage.trim() || undefined,
+                });
+                setContactDialogOpen(false);
+              } catch (err: any) {
+                setContactSubmitError(err?.response?.data?.error ?? t('usageBilling.contactError'));
+              } finally {
+                setContactSending(false);
+              }
+            }}
+            disabled={contactSending}
+          >
+            {t('usageBilling.contactSubmit')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* CTA Section */}
       <Box

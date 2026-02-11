@@ -19,7 +19,7 @@ router.post("/", async (req: Request, res: Response) => {
 
     await sendContactRequest({
       fromEmail: email,
-      fromName: typeof body?.name === "string" ? body.name.trim() || undefined : user.name ?? undefined,
+      fromName: typeof body?.name === "string" ? body.name.trim() || undefined : undefined,
       phone,
       message: typeof body?.message === "string" ? body.message.trim() || undefined : undefined,
     });

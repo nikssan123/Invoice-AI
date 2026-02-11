@@ -22,6 +22,7 @@ router.get("/summary", async (req: Request, res: Response) => {
         currentPeriodEnd: true,
         trialEndsAt: true,
         enterpriseChatEnabled: true,
+        stripeSubscriptionId: true,
       },
     });
 

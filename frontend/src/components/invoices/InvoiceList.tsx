@@ -38,6 +38,7 @@ interface InvoiceListProps {
   onSelectAll: (selected: boolean) => void;
   onDeleteInvoice: (invoiceId: string) => void;
   onMoveInvoice: (invoiceId: string) => void;
+  onFolderClick?: (folderId: string) => void;
 }
 
 const InvoiceList: React.FC<InvoiceListProps> = ({
@@ -48,6 +49,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
   onSelectAll,
   onDeleteInvoice,
   onMoveInvoice,
+  onFolderClick,
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -169,6 +171,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
               <Paper
                 key={folder.id}
                 variant="outlined"
+                onClick={() => onFolderClick?.(folder.id)}
                 sx={{
                   p: 2,
                   display: 'flex',

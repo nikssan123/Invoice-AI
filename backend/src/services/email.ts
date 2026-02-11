@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { config } from "../config.js";
+import { buildEmailHtml } from "./emailTemplate.js";
 
 function isEmailConfigured(): boolean {
   return Boolean(config.smtpHost && config.smtpUser && config.smtpClientId && config.smtpClientSecret && config.smtpRefreshToken);
@@ -35,12 +36,21 @@ export async function sendWelcomeEmail(to: string, name?: string | null): Promis
   const displayName = name ?? "there";
 
   try {
+    const html = buildEmailHtml({
+      title: "Welcome to Invoice Desk",
+      introText: `Hi ${displayName},`,
+      bodyHtml:
+        "<p>Your account has been created successfully. You can log in to review and approve invoices with the help of Invoice Desk.</p>",
+      ctaLabel: "Go to app",
+      ctaUrl: `${config.appUrl.replace(/\/$/, "")}/dashboard`,
+    });
+
     await transporter.sendMail({
-      from: config.smtpUser,
+      from: config.emailFrom ?? config.smtpUser,
       to,
-      subject: "Welcome – your account has been created",
-      text: `Hi ${displayName},\n\nYour account has been created successfully. You can log in anytime.\n\nBest regards`,
-      html: `<p>Hi ${displayName},</p><p>Your account has been created successfully. You can log in anytime.</p><p>Best regards</p>`,
+      subject: "Welcome to Invoice Desk – your account has been created",
+      text: `Hi ${displayName},\n\nYour account has been created successfully. You can log in anytime to manage your invoices.\n\nBest regards,\nInvoice Desk`,
+      html,
     });
   } catch (err) {
     console.error("Failed to send welcome email:", err);
@@ -58,12 +68,22 @@ export async function sendPasswordResetEmail(to: string, resetToken: string): Pr
   const resetUrl = `${config.appUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(resetToken)}`;
 
   try {
+    const html = buildEmailHtml({
+      title: "Reset your password",
+      introText: "You requested a password reset.",
+      bodyHtml:
+        `<p>Click the button below to set a new password for your Invoice Desk account.</p>
+         <p>This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>`,
+      ctaLabel: "Reset password",
+      ctaUrl: resetUrl,
+    });
+
     await transporter.sendMail({
       from: config.emailFrom ?? config.smtpUser,
       to,
-      subject: "Password reset request",
-      text: `You requested a password reset. Click the link to set a new password:\n\n${resetUrl}\n\nThis link expires in 1 hour. If you didn't request this, you can ignore this email.`,
-      html: `<p>You requested a password reset. <a href="${resetUrl}">Click here to set a new password</a>.</p><p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
+      subject: "Reset your Invoice Desk password",
+      text: `You requested a password reset.\n\nUse this link to set a new password (valid for 1 hour):\n${resetUrl}\n\nIf you didn't request this, you can ignore this email.`,
+      html,
     });
   } catch (err) {
     console.error("Failed to send password reset email:", err);
@@ -86,12 +106,23 @@ export async function sendInvitationEmail(
   const from = config.emailFrom ?? config.smtpUser;
 
   try {
+    const html = buildEmailHtml({
+      title: `Invitation to join ${organizationName}`,
+      introText: "Hi,",
+      bodyHtml:
+        `<p>${inviterName} invited you to join <strong>${organizationName}</strong> on Invoice Desk.</p>
+         <p>Invoice Desk helps your team extract, review, and approve invoices faster with AI assistance.</p>`,
+      ctaLabel: "Accept invitation",
+      ctaUrl: acceptUrl,
+      secondaryText: "If you weren’t expecting this invitation, you can safely ignore this email.",
+    });
+
     await transporter.sendMail({
       from,
       to,
-      subject: `You're invited to join ${organizationName}`,
-      text: `Hi,\n\n${inviterName} invited you to join ${organizationName}. Click the link to accept and create your account:\n\n${acceptUrl}\n\nIf you didn't expect this, you can ignore this email.`,
-      html: `<p>Hi,</p><p>${inviterName} invited you to join <strong>${organizationName}</strong>. <a href="${acceptUrl}">Click here to accept and create your account</a>.</p><p>If you didn't expect this, you can ignore this email.</p>`,
+      subject: `You're invited to join ${organizationName} on Invoice Desk`,
+      text: `Hi,\n\n${inviterName} invited you to join ${organizationName} on Invoice Desk.\n\nAccept and create your account:\n${acceptUrl}\n\nIf you didn't expect this, you can ignore this email.`,
+      html,
     });
   } catch (err) {
     console.error("Failed to send invitation email:", err);
@@ -117,13 +148,25 @@ export async function sendContactRequest(params: {
   const messageLine = message ? `\nMessage:\n${message}\n` : "";
 
   try {
+    const detailsHtml =
+      `<p><strong>New contact request</strong></p>
+       <p>Email: <a href="mailto:${fromEmail}">${fromEmail}</a></p>` +
+      (fromName ? `<p>Name: ${fromName}</p>` : "") +
+      `<p>Phone: ${phone}</p>` +
+      (message ? `<p>Message:</p><p>${message.replace(/\n/g, "<br>")}</p>` : "");
+
+    const html = buildEmailHtml({
+      title: "New contact request",
+      bodyHtml: detailsHtml,
+    });
+
     await transporter.sendMail({
       from: config.emailFrom ?? config.smtpUser,
       to,
       replyTo: fromEmail,
       subject: "Contact / Sales request from app",
       text: `New contact request:\n\nEmail: ${fromEmail}\n${nameLine}Phone: ${phone}${messageLine}`,
-      html: `<p><strong>New contact request</strong></p><p>Email: <a href="mailto:${fromEmail}">${fromEmail}</a></p>${fromName ? `<p>Name: ${fromName}</p>` : ""}<p>Phone: ${phone}</p>${message ? `<p>Message:</p><p>${message.replace(/\n/g, "<br>")}</p>` : ""}`,
+      html,
     });
   } catch (err) {
     console.error("Failed to send contact request email:", err);
@@ -141,12 +184,22 @@ export async function sendInvoiceApprovedNotification(
   if (!transporter) return;
 
   try {
+    const baseUrl = config.appUrl.replace(/\/$/, "");
+    const invoicesUrl = `${baseUrl}/invoices`;
+
+    const html = buildEmailHtml({
+      title: "Invoice approved",
+      bodyHtml: `<p>The invoice <strong>${invoiceFilename}</strong> was approved by ${approvedBy}.</p>`,
+      ctaLabel: "View invoices",
+      ctaUrl: invoicesUrl,
+    });
+
     await transporter.sendMail({
       from: config.emailFrom ?? config.smtpUser,
       to,
       subject: `Invoice approved: ${invoiceFilename}`,
-      text: `The invoice "${invoiceFilename}" was approved by ${approvedBy}.`,
-      html: `<p>The invoice <strong>${invoiceFilename}</strong> was approved by ${approvedBy}.</p>`,
+      text: `The invoice "${invoiceFilename}" was approved by ${approvedBy}.\n\nYou can review your invoices here: ${invoicesUrl}`,
+      html,
     });
   } catch (err) {
     console.error("Failed to send invoice approved notification:", err);

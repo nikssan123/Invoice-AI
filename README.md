@@ -8,7 +8,7 @@ Full-stack PoC for uploading invoices (PDF/images), extracting fields with mock 
 - **PostgreSQL** (local install or Docker)
 - npm or yarn
 
-## Database setup
+## Database setup (local without Docker)
 
 1. Create a database, e.g.:
 
@@ -16,13 +16,7 @@ Full-stack PoC for uploading invoices (PDF/images), extracting fields with mock 
    createdb invoice_mvp
    ```
 
-   Or with Docker Compose (from project root):
-
-   ```bash
-   docker compose up -d
-   ```
-
-   Then use `DATABASE_URL="postgresql://postgres:postgres@localhost:5432/invoice_mvp"` in `backend/.env`. Alternatively: `docker run -d --name postgres-invoice -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password -e POSTGRES_DB=invoice_mvp -p 5432:5432 postgres:16`
+   Or with Docker only for Postgres (from project root), see `docker-compose.yml`.
 
 2. In `backend/`, copy env and set the URL:
 
@@ -31,9 +25,9 @@ Full-stack PoC for uploading invoices (PDF/images), extracting fields with mock 
    cp .env.example .env
    ```
 
-   Edit `.env` and set:
+   Edit `.env` and set (for non-Docker local dev):
 
-   ```
+   ```env
    PORT=3001
    DATABASE_URL="postgresql://user:password@localhost:5432/invoice_mvp"
    ```
@@ -90,6 +84,76 @@ App runs at **http://localhost:5173**. Vite proxies `/api` to the backend, so no
 VITE_API_URL=http://localhost:3001
 ```
 
+## Running the full stack with Docker Compose
+
+To run Postgres, backend, OCR service, and frontend together with persistent storage:
+
+1. **Create env files (recommended)**:
+
+   - `backend/.env` – copy from `.env.example` and set at least:
+
+     ```env
+     PORT=3001
+     DATABASE_URL="postgresql://invoicedesk:changeme@db:5432/invoicedesk?schema=public"
+     OCR_SERVICE_URL="http://ocr-service:8000"
+     UPLOAD_DIR="/app/uploads"
+     APP_URL="http://localhost:4173"
+     JWT_SECRET="change_me"
+     # SMTP_*, STRIPE_*, OPENAI_* etc. as needed
+     ```
+
+   - `ocr-service/.env` – set your OpenAI / model configuration, for example:
+
+     ```env
+     OPENAI_API_KEY=sk-...
+     ```
+
+2. **Start the stack** from the project root:
+
+   ```bash
+   docker compose up --build
+   ```
+
+   This will start:
+
+   - `db` (Postgres) on port `5432` with data stored in the `db_data` volume.
+   - `ocr-service` (FastAPI + uvicorn) on port `8000`.
+   - `backend` (Express API) on port `3001`, storing uploads in the `uploads` volume at `/app/uploads`.
+   - `frontend` (Vite preview) on port `4173`.
+
+3. **Run Prisma migrations** inside the backend container:
+
+   ```bash
+   docker compose exec backend npx prisma migrate deploy
+   ```
+
+   or, for initial development migrations:
+
+   ```bash
+   docker compose exec backend npx prisma migrate dev --name init
+   ```
+
+4. Open the app in your browser:
+
+   - Frontend: `http://localhost:4173`
+   - API health: `http://localhost:3001/health`
+   - OCR health: `http://localhost:8000/health`
+
+## Synology NAS + Cloudflare Tunnel deployment (overview)
+
+For hosting on a Synology NAS behind Cloudflare Tunnel:
+
+- Run the full stack with Docker Compose on the NAS:
+  - `db` (Postgres) and `ocr-service` are internal-only (no host ports).
+  - `frontend` and `backend` run behind an `nginx` reverse proxy container (see `docker-compose.yml` and `deploy/nginx.conf`).
+  - Expose only `nginx:80` on a host port (e.g. `8080:80`), and point your Cloudflare Tunnel origin at `http://NAS_LAN_IP:8080`.
+- The backend container uses `backend/docker-entrypoint.sh` as its CMD:
+  - Waits for `db:5432` to be reachable.
+  - Runs `npx prisma migrate deploy` to apply pending Prisma migrations.
+  - Starts `node dist/index.js`.
+- Store production secrets in `backend/.env` and `ocr-service/.env` on the NAS and reference them via `env_file` in `docker-compose.yml`.
+- Configure your Cloudflare Tunnel DNS (e.g. `invoice.yourdomain.com`) to point at the tunnel, which forwards to the NGINX host port on the NAS.
+
 ## Flow
 
 1. **Dashboard** – Summary (total / approved / pending / needs review) and list of invoices with links.
@@ -113,7 +177,7 @@ AI-Employee/
 │   │   ├── middleware/
 │   │   ├── routes/
 │   │   └── services/
-│   ├── uploads/          # created at runtime, gitignored
+│   ├── uploads/          # created at runtime, gitignored (backed by Docker volume when using compose)
 │   ├── .env.example
 │   └── package.json
 ├── frontend/

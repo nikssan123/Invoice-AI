@@ -144,24 +144,18 @@ const AuthenticatedLayout: React.FC = () => {
             }}
           >
             <Box
-              component="span"
+              component="img"
+              src="/InvoiceLogo.png"
+              alt={t('app.brand')}
               sx={{
                 width: 28,
                 height: 28,
                 borderRadius: 0.75,
-                bgcolor: 'primary.main',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-            }}
-          >
-            IV
-          </Box>
-          {t('app.brand')}
-        </Typography>
+                objectFit: 'contain',
+              }}
+            />
+            {t('app.brand')}
+          </Typography>
         )}
         {!isMobile && (
           <IconButton onClick={handleDrawerToggle} size="small">

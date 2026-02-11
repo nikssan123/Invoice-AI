@@ -1,17 +1,57 @@
-# Optional: start PostgreSQL for local development
-# Run: docker compose up -d
-# Then set backend/.env: DATABASE_URL="postgresql://postgres:postgres@localhost:5432/invoice_mvp"
+version: "3.9"
+
 services:
-  postgres:
+  db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: invoice_mvp
+      POSTGRES_DB: invoicedesk
+      POSTGRES_USER: invoicedesk
+      POSTGRES_PASSWORD: changeme
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
+
+  ocr-service:
+    build:
+      context: ./ocr-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./ocr-service/.env
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - db
+      - ocr-service
+    volumes:
+      - uploads:/app/uploads
+    ports: []
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    env_file:
+      - ./frontend/.env
+    depends_on:
+      - backend
+    ports: []
+
+  nginx:
+    image: nginx:alpine
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "8080:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:
-  postgres_data:
+  db_data:
+  uploads:

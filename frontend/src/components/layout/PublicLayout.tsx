@@ -166,14 +166,6 @@ const PublicLayout: React.FC<PublicLayoutProps> = ({ children }) => {
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ color: 'white', mb: 1.5, fontWeight: 600 }}>
-                {t('landing.footer.company')}
-              </Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.about')}</Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.blog')}</Typography>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>{t('landing.footer.careers')}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="subtitle2" sx={{ color: 'white', mb: 1.5, fontWeight: 600 }}>
                 {t('landing.footer.legal')}
               </Typography>
               <Typography variant="body2" sx={{ mb: 0.5 }}>
