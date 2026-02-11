@@ -97,3 +97,59 @@ export async function sendInvitationEmail(
     console.error("Failed to send invitation email:", err);
   }
 }
+
+export async function sendContactRequest(params: {
+  fromEmail: string;
+  fromName?: string | null;
+  phone: string;
+  message?: string | null;
+}): Promise<void> {
+  const transporter = getTransporter();
+  const to = config.contactEmail ?? config.emailFrom ?? config.smtpUser;
+
+  if (!transporter || !to) {
+    console.warn("Contact email not configured (CONTACT_EMAIL or EMAIL_FROM). Skipping contact request.");
+    return;
+  }
+
+  const { fromEmail, fromName, phone, message } = params;
+  const nameLine = fromName ? `Name: ${fromName}\n` : "";
+  const messageLine = message ? `\nMessage:\n${message}\n` : "";
+
+  try {
+    await transporter.sendMail({
+      from: config.emailFrom ?? config.smtpUser,
+      to,
+      replyTo: fromEmail,
+      subject: "Contact / Sales request from app",
+      text: `New contact request:\n\nEmail: ${fromEmail}\n${nameLine}Phone: ${phone}${messageLine}`,
+      html: `<p><strong>New contact request</strong></p><p>Email: <a href="mailto:${fromEmail}">${fromEmail}</a></p>${fromName ? `<p>Name: ${fromName}</p>` : ""}<p>Phone: ${phone}</p>${message ? `<p>Message:</p><p>${message.replace(/\n/g, "<br>")}</p>` : ""}`,
+    });
+  } catch (err) {
+    console.error("Failed to send contact request email:", err);
+    throw err;
+  }
+}
+
+/** Send a non-blocking notification when an invoice is approved. Do not await in the request path. */
+export async function sendInvoiceApprovedNotification(
+  to: string,
+  invoiceFilename: string,
+  approvedBy: string
+): Promise<void> {
+  const transporter = getTransporter();
+  if (!transporter) return;
+
+  try {
+    await transporter.sendMail({
+      from: config.emailFrom ?? config.smtpUser,
+      to,
+      subject: `Invoice approved: ${invoiceFilename}`,
+      text: `The invoice "${invoiceFilename}" was approved by ${approvedBy}.`,
+      html: `<p>The invoice <strong>${invoiceFilename}</strong> was approved by ${approvedBy}.</p>`,
+    });
+  } catch (err) {
+    console.error("Failed to send invoice approved notification:", err);
+    throw err;
+  }
+}

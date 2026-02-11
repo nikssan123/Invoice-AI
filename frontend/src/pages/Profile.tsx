@@ -11,8 +11,18 @@ import {
   Divider,
   Tabs,
   Tab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  CircularProgress,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/api/client';
 import { useAuth } from '@/context/AuthContext';
 import type { ExportColumnConfig } from '@/types/export';
@@ -23,14 +33,29 @@ type ProfileMeResponse = {
   name: string | null;
   organizationId: string;
   hasExportConfig: boolean;
+  isOwner?: boolean;
 };
+
+interface Member {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  createdAt: string;
+}
+
+const DELETE_CONFIRM_PHRASE = 'DELETE';
 
 const Profile: React.FC = () => {
   const { t } = useTranslation();
-  const { user, setAuth } = useAuth();
+  const navigate = useNavigate();
+  const { user, setAuth, logout } = useAuth();
 
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [membersLoaded, setMembersLoaded] = useState(false);
 
   const [emailValue, setEmailValue] = useState('');
   const [currentPasswordForEmail, setCurrentPasswordForEmail] = useState('');
@@ -49,6 +74,12 @@ const Profile: React.FC = () => {
 
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [tabValue, setTabValue] = useState(0);
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteNewOwnerId, setDeleteNewOwnerId] = useState<string>('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -75,10 +106,33 @@ const Profile: React.FC = () => {
     }
   }, [t]);
 
+  const loadMembers = useCallback(async () => {
+    try {
+      const res = await apiClient.get<{ members: Member[]; ownerId: string | null }>(
+        '/api/organizations/members'
+      );
+      setMembers(res.data.members ?? []);
+      setOwnerId(res.data.ownerId ?? null);
+    } catch {
+      setMembers([]);
+      setOwnerId(null);
+    } finally {
+      setMembersLoaded(true);
+    }
+  }, []);
+
   useEffect(() => {
     loadProfile();
     loadExportConfig();
   }, [loadProfile, loadExportConfig]);
+
+  useEffect(() => {
+    if (profile?.isOwner) {
+      loadMembers();
+    } else {
+      setMembersLoaded(true);
+    }
+  }, [profile?.isOwner, loadMembers]);
 
   const handleSaveEmail = async () => {
     setEmailError(null);
@@ -178,6 +232,50 @@ const Profile: React.FC = () => {
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
+  };
+
+  const otherMembers = members.filter((m) => m.id !== user?.id);
+  const isOwnerWithOthers = !!profile?.isOwner && otherMembers.length > 0;
+  const isOwnerAlone = !!profile?.isOwner && membersLoaded && otherMembers.length === 0;
+  const canDeleteWithTransfer = isOwnerWithOthers && deleteNewOwnerId;
+  const deleteConfirmValid = deleteConfirmText === DELETE_CONFIRM_PHRASE;
+
+  const handleOpenDeleteDialog = () => {
+    setDeleteError(null);
+    setDeleteConfirmText('');
+    setDeleteNewOwnerId(isOwnerWithOthers ? (otherMembers[0]?.id ?? '') : '');
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDeleteAccount = async () => {
+    if (!deleteConfirmValid) return;
+    if (isOwnerWithOthers && !deleteNewOwnerId) {
+      setDeleteError(t('profile.deleteAccountTransferRequired'));
+      return;
+    }
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      const body: { newOwnerId?: string } = {};
+      if (canDeleteWithTransfer) body.newOwnerId = deleteNewOwnerId;
+      await apiClient.post('/api/profile/delete-account', body);
+      logout();
+      navigate('/', { replace: true });
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      setDeleteError(
+        axiosErr.response?.data?.error ?? t('profile.deleteAccountError')
+      );
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleCloseDeleteDialog = () => {
+    if (!deleteLoading) {
+      setDeleteDialogOpen(false);
+      setDeleteError(null);
+    }
   };
 
   return (
@@ -346,6 +444,81 @@ const Profile: React.FC = () => {
           </CardContent>
         )}
       </Card>
+
+      <Card sx={{ mt: 3, borderColor: 'error.main', borderWidth: 1, borderStyle: 'solid' }}>
+        <CardContent>
+          <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }} color="error">
+            {t('profile.deleteAccountTitle')}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {profile?.isOwner
+              ? isOwnerAlone
+                ? t('profile.deleteAccountOwnerAloneHint')
+                : t('profile.deleteAccountOwnerWithMembersHint')
+              : t('profile.deleteAccountNonOwnerHint')}
+          </Typography>
+          <Button
+            variant="outlined"
+            color="error"
+            onClick={handleOpenDeleteDialog}
+            disabled={!membersLoaded}
+          >
+            {t('profile.deleteAccountButton')}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={deleteDialogOpen} onClose={handleCloseDeleteDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('profile.deleteAccountConfirmTitle')}</DialogTitle>
+        <DialogContent>
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+          {isOwnerWithOthers && (
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>{t('profile.deleteAccountSelectNewOwner')}</InputLabel>
+              <Select
+                value={deleteNewOwnerId}
+                label={t('profile.deleteAccountSelectNewOwner')}
+                onChange={(e) => setDeleteNewOwnerId(e.target.value)}
+              >
+                {otherMembers.map((m) => (
+                  <MenuItem key={m.id} value={m.id}>
+                    {m.name || m.email}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {t('profile.deleteAccountTypeConfirm', { phrase: DELETE_CONFIRM_PHRASE })}
+          </Typography>
+          <TextField
+            fullWidth
+            size="small"
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+            placeholder={DELETE_CONFIRM_PHRASE}
+            error={deleteConfirmText.length > 0 && !deleteConfirmValid}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog} disabled={deleteLoading}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleConfirmDeleteAccount}
+            disabled={!deleteConfirmValid || deleteLoading || (isOwnerWithOthers && !deleteNewOwnerId)}
+            startIcon={deleteLoading ? <CircularProgress size={18} color="inherit" /> : null}
+          >
+            {deleteLoading ? t('profile.deleteAccountDeleting') : t('profile.deleteAccountConfirmButton')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={!!successMessage}

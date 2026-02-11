@@ -27,6 +27,9 @@ export const PLAN_CONFIG: Record<Exclude<BillingPlanId, "enterprise">, PlanConfi
   },
 };
 
+export const TRIAL_DAYS = 7;
+export const TRIAL_DOCUMENT_LIMIT = 10;
+
 export const STRIPE_CONFIG = {
   publishedKey: process.env.STRIPE_PUBLISHABLE_KEY ?? "",
   secretKey: process.env.STRIPE_SECRET_KEY ?? "",

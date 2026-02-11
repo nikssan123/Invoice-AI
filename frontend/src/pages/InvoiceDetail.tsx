@@ -57,6 +57,7 @@ export interface InvoiceDetailApi {
     totalAmount?: number | null;
   } | null;
   approvals: { approvedBy: string; approvedAt: string; action: string }[];
+  chatMessages?: { id: string; role: 'user' | 'assistant'; content: string; timestamp: string }[];
 }
 
 /** Normalize confidence score to 0-1 (API may return 0-100) */
@@ -85,8 +86,12 @@ interface TabPanelProps {
 }
 
 const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
-  <div role="tabpanel" hidden={value !== index} style={{ height: '100%' }}>
-    {value === index && <Box sx={{ height: '100%', overflow: 'auto' }}>{children}</Box>}
+  <div role="tabpanel" hidden={value !== index} style={{ flex: 1, minHeight: 0, display: value === index ? 'flex' : 'none', flexDirection: 'column' }}>
+    {value === index && (
+      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {children}
+      </Box>
+    )}
   </div>
 );
 
@@ -187,6 +192,35 @@ const InvoiceDetail: React.FC = () => {
   const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
   const [fileLoadError, setFileLoadError] = useState<string | null>(null);
   const fileUrlRef = useRef<string | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const [chatAvailable, setChatAvailable] = useState(false);
+  const [chatDisabled, setChatDisabled] = useState(false);
+
+  // Scroll chat to bottom when a new message is sent or received
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const raf = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight - el.clientHeight;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [chatMessages, isSending]);
+
+  // Billing summary: chat tab only for PRO or enterprise with chat enabled
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .get<{ chatAvailable?: boolean }>('/api/billing/summary')
+      .then((res) => {
+        if (!cancelled) setChatAvailable(res.data.chatAvailable ?? false);
+      })
+      .catch(() => {
+        if (!cancelled) setChatAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Fetch invoice by id
   useEffect(() => {
@@ -196,6 +230,7 @@ const InvoiceDetail: React.FC = () => {
     setError(null);
     setNotFound(false);
     setInvoice(null);
+    setChatMessages([]);
     setFormData(defaultFormData);
     setConfidenceScores(defaultScores);
     setFileObjectUrl(null);
@@ -208,6 +243,15 @@ const InvoiceDetail: React.FC = () => {
         if (cancelled) return;
         const data = res.data;
         setInvoice(data);
+        const savedChat = data.chatMessages ?? [];
+        setChatMessages(
+          savedChat.map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+          }))
+        );
         const f = data.fields;
         if (f) {
           setFormData({
@@ -333,47 +377,45 @@ const InvoiceDetail: React.FC = () => {
   };
 
   const handleSendMessage = async () => {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() || !id || chatDisabled) return;
 
     const userMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content: chatInput,
+      content: chatInput.trim(),
       timestamp: new Date().toISOString(),
     };
-
-    setChatMessages(prev => [...prev, userMessage]);
+    setChatMessages((prev) => [...prev, userMessage]);
     setChatInput('');
     setIsSending(true);
 
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      const history = chatMessages.map((m) => ({ role: m.role, content: m.content }));
+      const res = await apiClient.post<{ content: string }>('/api/invoices/' + id + '/chat', {
+        message: userMessage.content,
+        history,
+      });
       const aiResponse: ChatMessage = {
         id: `msg-${Date.now() + 1}`,
         role: 'assistant',
-        content: getAIResponse(chatInput),
+        content: res.data.content,
         timestamp: new Date().toISOString(),
       };
-      setChatMessages(prev => [...prev, aiResponse]);
+      setChatMessages((prev) => [...prev, aiResponse]);
+    } catch (err: unknown) {
+      const raw =
+        (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ??
+        (err as Error)?.message ??
+        t('invoiceDetail.chatError');
+      const isStarterLimit = typeof raw === 'string' && raw.startsWith('Starter plan limit reached');
+      const isProLimit = typeof raw === 'string' && raw.startsWith('Pro plan limit reached');
+      if (isStarterLimit || isProLimit) {
+        setChatDisabled(true);
+      }
+      setSnackbar({ open: true, message: raw, severity: 'error' });
+    } finally {
       setIsSending(false);
-    }, 1500);
-  };
-
-  const getAIResponse = (query: string): string => {
-    const q = query.toLowerCase();
-    if (q.includes('vat') && q.includes('amount')) {
-      return `The VAT amount on this invoice is ${formData.currency} ${formData.vatAmount.toFixed(2)}. This represents the tax charged on the net amount of ${formData.currency} ${formData.netAmount.toFixed(2)}.`;
     }
-    if (q.includes('total')) {
-      return `The total amount is ${formData.currency} ${formData.totalAmount.toFixed(2)}, which includes the net amount (${formData.currency} ${formData.netAmount.toFixed(2)}) plus VAT (${formData.currency} ${formData.vatAmount.toFixed(2)}).`;
-    }
-    if (q.includes('supplier')) {
-      return `The supplier for this invoice is ${formData.supplierName} with VAT number ${formData.vatNumber}.`;
-    }
-    if (q.includes('missing') || q.includes('field')) {
-      return 'All required fields have been extracted. I recommend reviewing the VAT number as it has a lower confidence score.';
-    }
-    return 'I understand your question. Based on the extracted data from this invoice, I can help verify amounts, check calculations, or identify any potential issues. What specific information would you like me to analyze?';
   };
 
   const formatTime = (timestamp: string) => {
@@ -547,17 +589,18 @@ const InvoiceDetail: React.FC = () => {
           }}
         >
           <Tabs
-            value={tabValue}
+            value={chatAvailable ? tabValue : 0}
             onChange={(_, newValue) => setTabValue(newValue)}
-            sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
+            sx={{ borderBottom: 1, borderColor: 'divider', px: 2, flexShrink: 0 }}
           >
             <Tab label={t('invoiceDetail.extractedData')} />
-            <Tab label={t('invoiceDetail.chatWithDocument')} />
+            {chatAvailable && <Tab label={t('invoiceDetail.chatWithDocument')} />}
           </Tabs>
 
+          <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Extracted Data Tab */}
           <TabPanel value={tabValue} index={0}>
-            <Box sx={{ p: 3, pb: 10, height: '100%', overflow: 'auto' }}>
+            <Box sx={{ p: 3, pb: 10, flex: 1, minHeight: 0, overflow: 'auto' }}>
               {isApproved && (
                 <Alert severity="success" sx={{ mb: 3 }}>
                   {t('invoiceDetail.approvedLocked')}
@@ -722,11 +765,12 @@ const InvoiceDetail: React.FC = () => {
             </Box>
           </TabPanel>
 
-          {/* Chat Tab */}
+          {/* Chat Tab (PRO or enterprise with chat enabled) */}
+          {chatAvailable && (
           <TabPanel value={tabValue} index={1}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, px: 2, pt: 2, pb: 1 }}>
               {/* Chat Messages */}
-              <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+              <Box ref={chatScrollRef} sx={{ flex: 1, minHeight: 0, overflow: 'auto', mb: 2 }}>
                 {chatMessages.length === 0 ? (
                   <Box sx={{ textAlign: 'center', py: 6 }}>
                     <AIIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
@@ -809,20 +853,20 @@ const InvoiceDetail: React.FC = () => {
               </Box>
 
               {/* Chat Input */}
-              <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ pt: 2, pb: 2, borderTop: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
                 <TextField
                   fullWidth
                   placeholder={t('invoiceDetail.chatPlaceholder')}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  disabled={isSending}
+                  disabled={isSending || chatDisabled}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
                         <IconButton
                           onClick={handleSendMessage}
-                          disabled={!chatInput.trim() || isSending}
+                          disabled={!chatInput.trim() || isSending || chatDisabled}
                           color="primary"
                         >
                           <SendIcon />
@@ -834,6 +878,8 @@ const InvoiceDetail: React.FC = () => {
               </Box>
             </Box>
           </TabPanel>
+          )}
+          </Box>
         </Paper>
       </Box>
 

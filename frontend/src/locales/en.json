@@ -14,9 +14,9 @@
     "back": "Back"
   },
   "app": {
-    "title": "Invoices with AI",
-    "description": "Helping accountants process invoices",
-    "brand": "InvoiceAI"
+  "title": "Invoice Desk",
+  "description": "Helping accountants process invoices",
+  "brand": "Invoice Desk"
   },
   "landing": {
     "hero": {
@@ -54,8 +54,8 @@
       }
     },
     "demoSection": {
-      "title": "See it in action",
-      "subtitle": "Watch how InvoiceAI processes documents in real time.",
+    "title": "See it in action",
+    "subtitle": "Watch how Invoice Desk processes documents in real time.",
       "clickToWatch": "Click to watch demo video",
       "tryYourself": "Try it yourself"
     },
@@ -75,13 +75,13 @@
       "planEnterpriseDesc": "Custom solutions for large organizations"
     },
     "cta": {
-      "title": "Ready to simplify invoice processing?",
-      "subtitle": "Over 500 companies use InvoiceAI to save time and reduce errors.",
+    "title": "Ready to simplify invoice processing?",
+    "subtitle": "Over 500 companies use Invoice Desk to save time and reduce errors.",
       "startTrial": "Start your free trial",
       "bookDemo": "Book a demo"
     },
     "footer": {
-      "tagline": "Invoice processing with AI and human approval. Simplify your payables workflow.",
+    "tagline": "Invoice processing with AI and human approval. Simplify your payables workflow.",
       "product": "Product",
       "company": "Company",
       "legal": "Legal",
@@ -90,11 +90,11 @@
       "security": "Security",
       "about": "About us",
       "blog": "Blog",
-      "careers": "Careers",
+    "careers": "Careers",
       "privacyPolicy": "Privacy policy",
       "termsOfService": "Terms of service",
-      "gdpr": "GDPR",
-      "copyright": "© {{year}} InvoiceAI. All rights reserved."
+    "gdpr": "GDPR",
+    "copyright": "© {{year}} Invoice Desk. All rights reserved."
     }
   },
   "login": {
@@ -186,6 +186,7 @@
       "logout": "Sign out",
       "profile": "Profile",
       "currentPlan": "Current plan",
+      "planTrial": "Trial",
       "proPlan": "Pro plan",
       "invoicesUsage": "{{used}} / {{limit}} invoices"
     }
@@ -249,6 +250,13 @@
     "exportConfigSaveError": "Failed to save export configuration."
   },
   "invoiceList": {
+    "invoice": "Invoice",
+    "supplier": "Supplier",
+    "date": "Date",
+    "amount": "Amount",
+    "status": "Status",
+    "confidence": "Confidence",
+    "actions": "Actions",
     "pending": "Pending",
     "needsReview": "Needs review",
     "approved": "Approved",
@@ -321,6 +329,7 @@
     "chatPlaceholder": "Ask a question about this invoice...",
     "askQuestions": "Ask questions about this invoice",
     "chatHelp": "I can help verify amounts, calculations, or potential issues.",
+    "chatError": "Failed to send message. Please try again.",
     "suggestedVat": "What is the VAT amount?",
     "suggestedCheck": "Check if the amounts are correct",
     "suggestedMissing": "Are there any missing fields?"
@@ -350,6 +359,9 @@
     "notificationPreferences": "Notification preferences",
     "emailNotifications": "Email notifications",
     "emailNotificationsDesc": "Get email notifications when invoices are approved",
+    "enterpriseFeatures": "Enterprise features",
+    "enableInvoiceChat": "Enable invoice chat",
+    "enableInvoiceChatDesc": "Allow team members to use the AI chat on invoice detail pages (PRO feature).",
     "processingPreferences": "Processing preferences",
     "autoApproveHighConfidence": "Auto-approve high confidence",
     "autoApproveDesc": "Automatically approve invoices with 95%+ confidence",
@@ -380,7 +392,12 @@
     "roleUpdated": "Role updated.",
     "memberRemoved": "Member removed.",
     "onlyOwnerCanDemote": "Only the organization owner can demote administrators.",
-    "onlyOwnerCanRemoveAdmin": "Only the organization owner can remove administrators."
+    "onlyOwnerCanRemoveAdmin": "Only the organization owner can remove administrators.",
+    "makeOwner": "Make owner",
+    "transferOwnershipTitle": "Transfer ownership",
+    "transferOwnershipConfirm": "Transfer organization ownership to {{name}}? You will become an admin and can delete your account from Profile.",
+    "transferOwnershipConfirmButton": "Transfer ownership",
+    "transferOwnershipSuccess": "Ownership transferred. You can delete your account from Profile if you wish."
   },
   "usageBilling": {
     "title": "Usage & billing",
@@ -393,7 +410,13 @@
     "documentsRemaining": "documents remaining",
     "billingCycle": "Billing cycle",
     "billingCycleMonthly": "Monthly",
+    "planTrial": "Trial",
+    "trialEndsOn": "Trial ends on",
+    "trialBanner": "You're on a 7-day free trial with 10 documents. Subscribe to continue after the trial.",
     "nextBillingDate": "Next billing date",
+    "subscriptionEndsOn": "Subscription ends on",
+    "subscriptionEnded": "Subscription ended",
+    "endedOnDate": "Ended on {{date}}",
     "availablePlans": "Available plans",
     "billingHistory": "Billing history",
     "viewAllInvoices": "View all invoices",
@@ -423,23 +446,39 @@
     "downgradeScheduledShort": "Scheduled",
     "upgradeSuccess": "Upgrade complete. You now have access to the higher plan limits.",
     "upgradeProrated": "You'll be charged {{amount}} (prorated for the remainder of your billing period).",
+    "upgradeProratedNoCharge": "No charge for the remainder of your billing period.",
     "downgradeNextMonth": "Next month you'll be charged {{amount}} for the Starter plan.",
     "scheduledDowngradeMessage": "Your plan will change to Starter on {{date}}.",
     "scheduledDowngradeHint": "You can stay on Pro by clicking Upgrade below.",
     "stayOnPro": "Stay on Pro",
     "currentPlanLabel": "Current plan",
     "contactSales": "Contact sales",
+    "contactUs": "Contact us",
+    "contactDialogTitle": "Contact us",
+    "contactEmail": "Email",
+    "contactPhone": "Phone",
+    "contactName": "Name (optional)",
+    "contactMessage": "Message (optional)",
+    "contactSend": "Send",
+    "contactSuccess": "Message sent. We'll get back to you soon.",
+    "contactError": "Failed to send. Please try again.",
     "downgrade": "Downgrade",
+    "subscribe": "Subscribe",
     "upgrade": "Upgrade",
     "custom": "Custom",
     "limitResetHelper": "The limit resets every month. When you reach it, you can upgrade your plan.",
+    "monthlyLimitReached": "The monthly invoice limit has been reached for your plan.",
+    "subscriptionInactive": "Your subscription is not active. Please update your plan to continue processing invoices.",
+    "trialExpired": "Trial has ended. Subscribe to continue using the app.",
     "errorLoading": "Failed to load billing summary.",
     "planStarterFeature1": "Up to 500 invoices per month",
     "planStarterFeature2": "Core OCR extraction for supplier invoices",
     "planStarterFeature3": "Simple monthly limit suitable for small teams",
+    "planStarterChatFeature": "Invoice chat: up to 10 questions per invoice about extracted data",
     "planProFeature1": "Up to 1500 invoices per month",
     "planProFeature2": "Advanced OCR extraction and faster review",
     "planProFeature3": "Includes chat with AI assistant for invoice questions",
+    "planProChatFeature": "Invoice chat: up to 25 questions per invoice with broader accounting questions",
     "planEnterpriseFeature1": "Custom monthly limits per organisation",
     "planEnterpriseFeature2": "Contract-based pricing and invoicing",
     "planEnterpriseFeature3": "Configuration done together with our team"
@@ -470,7 +509,19 @@
     "excelSettingsSaveError": "Failed to save Excel export settings.",
     "tabAccount": "Account",
     "tabSecurity": "Security",
-    "tabExcel": "Excel"
+    "tabExcel": "Excel",
+    "deleteAccountTitle": "Delete account",
+    "deleteAccountNonOwnerHint": "Permanently delete your account. You will be removed from the organization.",
+    "deleteAccountOwnerWithMembersHint": "You are the organization owner. Transfer ownership to another member and delete your account, or delete the organization only when you are the only member.",
+    "deleteAccountOwnerAloneHint": "You are the only member. Deleting your account will permanently delete the organization and all its data.",
+    "deleteAccountButton": "Delete my account",
+    "deleteAccountConfirmTitle": "Confirm delete account",
+    "deleteAccountSelectNewOwner": "Transfer ownership to",
+    "deleteAccountTypeConfirm": "Type {{phrase}} to confirm",
+    "deleteAccountConfirmButton": "Delete account",
+    "deleteAccountDeleting": "Deleting…",
+    "deleteAccountError": "Failed to delete account.",
+    "deleteAccountTransferRequired": "Select a member to transfer ownership to."
   },
   "terms": {
     "title": "Terms of Service",

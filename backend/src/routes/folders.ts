@@ -257,6 +257,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
 
     // Delete related DB records in a transaction
     await prisma.$transaction([
+      prisma.invoiceChatMessage.deleteMany({ where: { invoiceId: { in: invoiceIds } } }),
       prisma.invoiceFields.deleteMany({ where: { invoiceId: { in: invoiceIds } } }),
       prisma.approval.deleteMany({ where: { invoiceId: { in: invoiceIds } } }),
       prisma.invoice.deleteMany({ where: { id: { in: invoiceIds } } }),

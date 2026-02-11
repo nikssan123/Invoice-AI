@@ -31,6 +31,8 @@ model Organization {
   monthlyInvoiceLimit          Int          @default(500)
   invoicesUsedThisPeriod       Int          @default(0)
   subscriptionStatus           SubscriptionStatus @default(active)
+  trialEndsAt                  DateTime?
+  enterpriseChatEnabled        Boolean      @default(false)
 
   @@index([name])
   @@index([ownerId])
@@ -87,22 +89,34 @@ model Invitation {
 }
 
 model Invoice {
-  id        String         @id @default(uuid())
-  filename  String
-  filePath  String
-  mimeType  String
-  status    String         @default("pending") // pending | approved | needs_review
-  createdAt DateTime       @default(now())
-  userId    String?
-  user      User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  fields    InvoiceFields?
-  approvals Approval[]
-  folderId  String?
-  folder    Folder?        @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  id              String               @id @default(uuid())
+  filename        String
+  filePath        String
+  mimeType        String
+  status          String               @default("pending") // pending | approved | needs_review
+  createdAt       DateTime             @default(now())
+  userId          String?
+  user            User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fields          InvoiceFields?
+  approvals       Approval[]
+  folderId        String?
+  folder          Folder?              @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  chatMessages    InvoiceChatMessage[]
 
   @@index([status])
   @@index([userId])
   @@index([folderId])
+}
+
+model InvoiceChatMessage {
+  id        String   @id @default(uuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  role      String   // "user" | "assistant"
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId])
 }
 
 model InvoiceFields {

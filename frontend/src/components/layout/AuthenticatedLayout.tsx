@@ -51,8 +51,18 @@ const AuthenticatedLayout: React.FC = () => {
     plan: 'starter' | 'pro' | 'enterprise';
     monthlyInvoiceLimit: number;
     invoicesUsedThisPeriod: number;
+    isTrial?: boolean;
   };
   const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
+
+  const fetchBillingSummary = React.useCallback(async () => {
+    try {
+      const res = await apiClient.get<BillingSummary>('/api/billing/summary');
+      setBillingSummary(res.data);
+    } catch {
+      setBillingSummary(null);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +78,19 @@ const AuthenticatedLayout: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const handler = () => {
+      fetchBillingSummary();
+    };
+    window.addEventListener('refreshBillingSummary', handler);
+    return () => window.removeEventListener('refreshBillingSummary', handler);
+  }, [fetchBillingSummary]);
+
+  // Refresh billing when drawer opens so the usage bar is up to date
+  useEffect(() => {
+    if (mobileOpen) fetchBillingSummary();
+  }, [mobileOpen, fetchBillingSummary]);
 
   const menuItems = [
     { text: t('layout.authenticated.dashboard'), icon: <DashboardIcon />, path: '/dashboard' },
@@ -214,11 +237,13 @@ const AuthenticatedLayout: React.FC = () => {
             </Typography>
             <Typography variant="subtitle2" fontWeight={600}>
               {billingSummary
-                ? billingSummary.plan === 'starter'
-                  ? 'Starter'
-                  : billingSummary.plan === 'pro'
-                    ? 'Pro'
-                    : 'Enterprise'
+                ? billingSummary.isTrial
+                  ? t('layout.authenticated.planTrial')
+                  : billingSummary.plan === 'starter'
+                    ? 'Starter'
+                    : billingSummary.plan === 'pro'
+                      ? 'Pro'
+                      : 'Enterprise'
                 : t('layout.authenticated.proPlan')}
             </Typography>
             <Typography variant="caption" color="text.secondary">

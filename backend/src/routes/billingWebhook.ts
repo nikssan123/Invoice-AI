@@ -53,6 +53,7 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req: R
             currentPeriodEnd,
             monthlyInvoiceLimit: planConfig.monthlyInvoiceLimit,
             invoicesUsedThisPeriod: 0,
+            trialEndsAt: null,
           },
         });
         break;
@@ -100,6 +101,7 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req: R
             stripeCustomerId: customerId,
             stripeSubscriptionId: subscription.id,
             subscriptionStatus: status,
+            trialEndsAt: null,
             ...(currentPeriodStart != null && { currentPeriodStart }),
             ...(currentPeriodEnd != null && { currentPeriodEnd }),
             ...(plan && {

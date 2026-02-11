@@ -12,6 +12,7 @@ import profileRoutes from "./routes/profile.js";
 import billingRoutes from "./routes/billing.js";
 import billingWebhookRoutes from "./routes/billingWebhook.js";
 import billingSummaryRoutes from "./routes/billingSummary.js";
+import contactRoutes from "./routes/contact.js";
 import { swaggerSpec } from "./swagger.js";
 
 const app = express();
@@ -33,6 +34,7 @@ app.use("/api/profile", requireAuth, profileRoutes);
 app.use("/api/billing", billingWebhookRoutes);
 app.use("/api/billing", requireAuth, billingRoutes);
 app.use("/api/billing", requireAuth, billingSummaryRoutes);
+app.use("/api/contact", requireAuth, contactRoutes);
 
 /**
  * @openapi

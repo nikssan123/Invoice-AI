@@ -209,6 +209,47 @@ export async function cancelSubscriptionForOrganization(organizationId: string):
   });
 }
 
+/** Cancel subscription immediately (e.g. before deleting organization). */
+export async function cancelSubscriptionImmediatelyForOrganization(
+  organizationId: string
+): Promise<void> {
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { stripeSubscriptionId: true },
+  });
+  if (!org?.stripeSubscriptionId) return;
+  try {
+    await stripe.subscriptions.cancel(org.stripeSubscriptionId);
+  } catch {
+    // Ignore (subscription may already be canceled)
+  }
+}
+
+/** Delete the Stripe customer for an organization (removes saved payment methods, etc.). */
+export async function deleteCustomerForOrganization(
+  organizationId: string
+): Promise<void> {
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { stripeCustomerId: true },
+  });
+  const customerId = org?.stripeCustomerId;
+  if (!customerId) return;
+
+  try {
+    await stripe.customers.del(customerId);
+  } catch (err) {
+    // Do not block org deletion if Stripe is unavailable or the customer is already gone.
+    const message = (err as Error).message;
+    // eslint-disable-next-line no-console
+    console.error("Failed to delete Stripe customer for organization", {
+      organizationId,
+      customerId,
+      message,
+    });
+  }
+}
+
 export async function getCancelAtPeriodEnd(organizationId: string): Promise<boolean> {
   const org = await prisma.organization.findUnique({
     where: { id: organizationId },

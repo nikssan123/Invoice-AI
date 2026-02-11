@@ -94,6 +94,9 @@ const Settings: React.FC = () => {
   const [removeLoading, setRemoveLoading] = useState(false);
   const [removeError, setRemoveError] = useState('');
   const [memberSuccessSnackbar, setMemberSuccessSnackbar] = useState<string | null>(null);
+  const [transferOwnerMember, setTransferOwnerMember] = useState<Member | null>(null);
+  const [transferOwnerLoading, setTransferOwnerLoading] = useState(false);
+  const [transferOwnerError, setTransferOwnerError] = useState('');
 
   const isAdmin = user?.role === 'admin';
   const isOwner = !!user?.id && user.id === ownerId;
@@ -172,6 +175,30 @@ const Settings: React.FC = () => {
     }
   };
 
+  const handleOpenTransferOwner = (member: Member) => {
+    setTransferOwnerMember(member);
+    setTransferOwnerError('');
+  };
+
+  const handleConfirmTransferOwner = async () => {
+    if (!transferOwnerMember) return;
+    setTransferOwnerError('');
+    setTransferOwnerLoading(true);
+    try {
+      await apiClient.post('/api/organizations/transfer-ownership', {
+        newOwnerId: transferOwnerMember.id,
+      });
+      setTransferOwnerMember(null);
+      setMemberSuccessSnackbar(t('settings.transferOwnershipSuccess'));
+      await fetchMembers();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      setTransferOwnerError(axiosErr.response?.data?.error ?? t('settings.saveErrorGeneric'));
+    } finally {
+      setTransferOwnerLoading(false);
+    }
+  };
+
   const fetchInvitations = useCallback(async () => {
     setInvitationsLoading(true);
     try {
@@ -213,20 +240,27 @@ const Settings: React.FC = () => {
     }
   }, [tabValue, fetchInvitations, fetchMembers]);
 
-  // Load organization-level processing preferences when Preferences tab is opened
+  // Load organization-level processing preferences and billing (for enterprise chat) when Preferences tab is opened
   useEffect(() => {
     const loadPreferences = async () => {
       if (tabValue !== 2) return;
       setPrefsLoading(true);
       setPrefsError('');
       try {
-        const res = await apiClient.get<{ autoApproveHighConfidence: boolean; emailNotificationsOnApproval: boolean }>(
-          '/api/organizations/preferences',
-        );
-        setAutoApprove(res.data.autoApproveHighConfidence);
-        setEmailNotifications(res.data.emailNotificationsOnApproval);
-        setInitialAutoApprove(res.data.autoApproveHighConfidence);
-        setInitialEmailNotifications(res.data.emailNotificationsOnApproval);
+        const [prefsRes, billingRes] = await Promise.all([
+          apiClient.get<{ autoApproveHighConfidence: boolean; emailNotificationsOnApproval: boolean }>(
+            '/api/organizations/preferences',
+          ),
+          apiClient.get<{ plan: 'starter' | 'pro' | 'enterprise'; enterpriseChatEnabled?: boolean }>(
+            '/api/billing/summary',
+          ),
+        ]);
+        setAutoApprove(prefsRes.data.autoApproveHighConfidence);
+        setEmailNotifications(prefsRes.data.emailNotificationsOnApproval);
+        setInitialAutoApprove(prefsRes.data.autoApproveHighConfidence);
+        setInitialEmailNotifications(prefsRes.data.emailNotificationsOnApproval);
+        setBillingPlan(billingRes.data.plan);
+        setEnterpriseChatEnabled(billingRes.data.enterpriseChatEnabled ?? false);
       } catch (err: any) {
         const message =
           err?.response?.data?.error ?? t('settings.preferencesLoadFailed');
@@ -268,6 +302,9 @@ const Settings: React.FC = () => {
   const [prefsSuccess, setPrefsSuccess] = useState("");
   const [initialEmailNotifications, setInitialEmailNotifications] = useState<boolean | null>(null);
   const [initialAutoApprove, setInitialAutoApprove] = useState<boolean | null>(null);
+  const [billingPlan, setBillingPlan] = useState<'starter' | 'pro' | 'enterprise' | null>(null);
+  const [enterpriseChatEnabled, setEnterpriseChatEnabled] = useState(false);
+  const [enterpriseChatSaving, setEnterpriseChatSaving] = useState(false);
 
   const handleInviteUser = async () => {
     setInviteError('');
@@ -507,6 +544,16 @@ const Settings: React.FC = () => {
                           <Chip label={t('settings.active')} color="success" size="small" variant="outlined" />
                         </TableCell>
                         <TableCell align="right">
+                          {isOwner && teamUser.id !== ownerId && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              sx={{ mr: 1 }}
+                              onClick={() => handleOpenTransferOwner(teamUser)}
+                            >
+                              {t('settings.makeOwner')}
+                            </Button>
+                          )}
                           <IconButton
                             size="small"
                             onClick={() => handleOpenEditRole(teamUser)}
@@ -568,6 +615,49 @@ const Settings: React.FC = () => {
                 sx={{ mb: 2, alignItems: 'flex-start' }}
               />
               <Divider sx={{ my: 2 }} />
+
+              {billingPlan === 'enterprise' && (
+                <>
+                  <Typography variant="h6" sx={{ mt: 4, mb: 3, fontWeight: 600 }}>
+                    {t('settings.enterpriseFeatures')}
+                  </Typography>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={enterpriseChatEnabled}
+                        onChange={async (e) => {
+                          const next = e.target.checked;
+                          setEnterpriseChatSaving(true);
+                          setPrefsError('');
+                          try {
+                            await apiClient.patch<{ enterpriseChatEnabled: boolean }>(
+                              '/api/organizations/me/billing',
+                              { enterpriseChatEnabled: next },
+                            );
+                            setEnterpriseChatEnabled(next);
+                            setPrefsSuccess(t('settings.preferencesSaved'));
+                          } catch (err: any) {
+                            setPrefsError(err?.response?.data?.error ?? t('settings.preferencesSaveFailed'));
+                          } finally {
+                            setEnterpriseChatSaving(false);
+                          }
+                        }}
+                        disabled={enterpriseChatSaving}
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography variant="body1">{t('settings.enableInvoiceChat')}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {t('settings.enableInvoiceChatDesc')}
+                        </Typography>
+                      </Box>
+                    }
+                    sx={{ mb: 2, alignItems: 'flex-start' }}
+                  />
+                  <Divider sx={{ my: 2 }} />
+                </>
+              )}
 
               <Typography variant="h6" sx={{ mt: 4, mb: 3, fontWeight: 600 }}>
                 {t('settings.processingPreferences')}
@@ -769,6 +859,36 @@ const Settings: React.FC = () => {
           <Button onClick={() => setRemoveConfirmMember(null)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" onClick={handleRemoveConfirm} disabled={removeLoading}>
             {removeLoading ? <CircularProgress size={24} color="inherit" /> : t('settings.remove')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Transfer ownership confirmation */}
+      <Dialog
+        open={!!transferOwnerMember}
+        onClose={() => { if (!transferOwnerLoading) { setTransferOwnerMember(null); setTransferOwnerError(''); } }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>{t('settings.transferOwnershipTitle')}</DialogTitle>
+        <DialogContent>
+          {transferOwnerMember && (
+            <Typography variant="body2">
+              {t('settings.transferOwnershipConfirm', { name: transferOwnerMember.name || transferOwnerMember.email })}
+            </Typography>
+          )}
+          {transferOwnerError && (
+            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setTransferOwnerError('')}>
+              {transferOwnerError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setTransferOwnerMember(null); setTransferOwnerError(''); }} disabled={transferOwnerLoading}>
+            {t('common.cancel')}
+          </Button>
+          <Button variant="contained" onClick={handleConfirmTransferOwner} disabled={transferOwnerLoading}>
+            {transferOwnerLoading ? <CircularProgress size={24} color="inherit" /> : t('settings.transferOwnershipConfirmButton')}
           </Button>
         </DialogActions>
       </Dialog>

@@ -20,6 +20,8 @@ router.get("/summary", async (req: Request, res: Response) => {
         invoicesUsedThisPeriod: true,
         currentPeriodStart: true,
         currentPeriodEnd: true,
+        trialEndsAt: true,
+        enterpriseChatEnabled: true,
       },
     });
 
@@ -27,10 +29,20 @@ router.get("/summary", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Organization not found" });
     }
 
+    const now = new Date();
+    const isTrial =
+      org.trialEndsAt != null && now <= org.trialEndsAt && org.stripeSubscriptionId == null;
+
     const [scheduled, cancelAtPeriodEnd] = await Promise.all([
       getScheduledDowngrade(organizationId),
       getCancelAtPeriodEnd(organizationId),
     ]);
+
+    const enterpriseChatEnabled = org.enterpriseChatEnabled ?? false;
+    const chatAvailable =
+      org.subscriptionPlan === "starter" ||
+      org.subscriptionPlan === "pro" ||
+      (org.subscriptionPlan === "enterprise" && enterpriseChatEnabled);
 
     res.json({
       plan: org.subscriptionPlan,
@@ -39,9 +51,13 @@ router.get("/summary", async (req: Request, res: Response) => {
       invoicesUsedThisPeriod: org.invoicesUsedThisPeriod,
       currentPeriodStart: org.currentPeriodStart,
       currentPeriodEnd: org.currentPeriodEnd,
+      trialEndsAt: org.trialEndsAt,
+      isTrial,
       scheduledDowngradeTo: scheduled.scheduledDowngradeTo,
       scheduledDowngradeAt: scheduled.scheduledDowngradeAt,
       cancelAtPeriodEnd,
+      enterpriseChatEnabled,
+      chatAvailable,
     });
   } catch (err) {
     console.error(err);

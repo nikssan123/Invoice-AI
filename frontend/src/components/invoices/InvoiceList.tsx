@@ -79,7 +79,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
       needs_review: { label: t('invoiceList.needsReview'), color: 'error' as const },
       approved: { label: t('invoiceList.approved'), color: 'success' as const },
     };
-    
+
     return (
       <Chip
         label={config[status].label}
@@ -88,6 +88,22 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
         variant="outlined"
       />
     );
+  };
+
+  /** Compute average confidence 0–100 from per-field scores (API may use 0–1 or 0–100). */
+  const getConfidencePercent = (scores: FolderInvoice['confidenceScores'] | undefined): number | null => {
+    if (!scores || typeof scores !== 'object') return null;
+    const values = Object.values(scores).filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+    if (values.length === 0) return null;
+    const normalized = values.map((v) => (v > 1 ? v : v * 100));
+    const avg = normalized.reduce((a, b) => a + b, 0) / normalized.length;
+    return Math.round(avg);
+  };
+
+  const getConfidenceColor = (pct: number): 'success' | 'warning' | 'error' => {
+    if (pct >= 90) return 'success';
+    if (pct >= 70) return 'warning';
+    return 'error';
   };
 
   const formatDate = (dateStr: string) => {
@@ -194,12 +210,12 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
                     onChange={(e) => onSelectAll(e.target.checked)}
                   />
                 </TableCell>
-                <TableCell>Invoice</TableCell>
-                <TableCell>Supplier</TableCell>
-                <TableCell>Date</TableCell>
-                <TableCell align="right">Amount</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Actions</TableCell>
+                <TableCell>{t('invoiceList.invoice')}</TableCell>
+                <TableCell>{t('invoiceList.supplier')}</TableCell>
+                <TableCell>{t('invoiceList.date')}</TableCell>
+                <TableCell align="right">{t('invoiceList.amount')}</TableCell>
+                <TableCell>{t('invoiceList.status')} / {t('invoiceList.confidence')}</TableCell>
+                <TableCell align="right">{t('invoiceList.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -270,7 +286,34 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      {getStatusChip(invoice.status)}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        {getStatusChip(invoice.status)}
+                        <Typography component="span" variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                          •
+                        </Typography>
+                        {(() => {
+                          const pct = getConfidencePercent(invoice.confidenceScores);
+                          if (pct == null || (invoice.extractedAt == null && pct === 0)) {
+                            return (
+                              <Typography variant="caption" color="text.secondary">
+                                —
+                              </Typography>
+                            );
+                          }
+                          const color = getConfidenceColor(pct);
+                          return (
+                            <Tooltip title={t('invoiceDetail.confidencePct', { pct })}>
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                sx={{ fontWeight: 600, color: `${color}.main`, whiteSpace: 'nowrap' }}
+                              >
+                                {pct}%
+                              </Typography>
+                            </Tooltip>
+                          );
+                        })()}
+                      </Box>
                     </TableCell>
                     <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                       <IconButton

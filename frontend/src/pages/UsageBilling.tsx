@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Card, CardContent, Button, LinearProgress, Divider, Chip, List, ListItem, ListItemText, Link, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress } from '@mui/material';
+import { Box, Typography, Card, CardContent, Button, LinearProgress, Divider, Chip, List, ListItem, ListItemText, Link, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, TextField } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import { TrendingUp as TrendingUpIcon, Receipt as ReceiptIcon, CalendarToday as CalendarIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '@/api/client';
+import { useAuth } from '@/context/AuthContext';
 
 type BillingSummary = {
   plan: 'starter' | 'pro' | 'enterprise';
@@ -13,6 +14,8 @@ type BillingSummary = {
   invoicesUsedThisPeriod: number;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
+  trialEndsAt?: string | null;
+  isTrial?: boolean;
   scheduledDowngradeTo?: 'starter' | null;
   scheduledDowngradeAt?: string | null;
   cancelAtPeriodEnd?: boolean;
@@ -36,6 +39,7 @@ type PaymentMethodInfo = {
 
 const UsageBilling: React.FC = () => {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [paymentHistory, setPaymentHistory] = useState<BillingInvoiceItem[]>([]);
@@ -50,6 +54,13 @@ const UsageBilling: React.FC = () => {
   const [downgradePreview, setDowngradePreview] = useState<{ nextAmountCents: number; currency: string } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodInfo>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactName, setContactName] = useState('');
+  const [contactMessage, setContactMessage] = useState('');
+  const [contactSending, setContactSending] = useState(false);
+  const [contactSubmitError, setContactSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     const q = searchParams.get('checkout');
@@ -173,14 +184,17 @@ const UsageBilling: React.FC = () => {
   };
 
   const currentPlanLabel =
-    summary?.plan === 'starter'
-      ? 'Starter'
-      : summary?.plan === 'pro'
-        ? 'Pro'
-        : 'Enterprise';
+    summary?.isTrial
+      ? t('usageBilling.planTrial')
+      : summary?.plan === 'starter'
+        ? 'Starter'
+        : summary?.plan === 'pro'
+          ? 'Pro'
+          : 'Enterprise';
 
   const canCancelSubscription =
     summary != null &&
+    !summary.isTrial &&
     summary.subscriptionStatus === 'active' &&
     (summary.plan === 'starter' || summary.plan === 'pro');
 
@@ -308,8 +322,20 @@ const UsageBilling: React.FC = () => {
                   },
                   {
                     icon: <CalendarIcon />,
-                    label: t('usageBilling.nextBillingDate'),
-                    value: formatDate(summary?.currentPeriodEnd ?? null),
+                    label:
+                      summary?.isTrial
+                        ? t('usageBilling.trialEndsOn')
+                        : summary?.subscriptionStatus === 'canceled'
+                          ? t('usageBilling.subscriptionEnded')
+                          : summary?.cancelAtPeriodEnd
+                            ? t('usageBilling.subscriptionEndsOn')
+                            : t('usageBilling.nextBillingDate'),
+                    value:
+                      summary?.isTrial && summary?.trialEndsAt
+                        ? formatDate(summary.trialEndsAt)
+                        : summary?.subscriptionStatus === 'canceled'
+                          ? (summary?.currentPeriodEnd ? t('usageBilling.endedOnDate', { date: formatDate(summary.currentPeriodEnd) }) : '—')
+                          : formatDate(summary?.currentPeriodEnd ?? null),
                     bg: 'warning.50',
                     color: 'warning.main',
                   },
@@ -327,6 +353,15 @@ const UsageBilling: React.FC = () => {
               </Grid>
             </CardContent>
           </Card>
+          {summary?.isTrial && (
+            <Card sx={{ borderColor: 'info.main', borderWidth: 1, borderStyle: 'solid', bgcolor: 'info.50' }}>
+              <CardContent>
+                <Typography variant="body2">
+                  {t('usageBilling.trialBanner')}
+                </Typography>
+              </CardContent>
+            </Card>
+          )}
           {summary?.scheduledDowngradeTo === 'starter' && summary?.scheduledDowngradeAt && (
             <Card sx={{ borderColor: 'info.main', borderWidth: 1, borderStyle: 'solid', bgcolor: 'info.50' }}>
               <CardContent>
@@ -358,7 +393,7 @@ const UsageBilling: React.FC = () => {
               </Typography>
               <Grid container spacing={2}>
                 {(['starter', 'pro', 'enterprise'] as const).map((planKey) => {
-                  const isCurrent = summary?.plan === planKey;
+                  const isCurrent = summary?.plan === planKey && !summary?.isTrial;
                   const isSubscriptionCanceled = summary?.subscriptionStatus === 'canceled';
                   const cancelAtPeriodEnd = summary?.cancelAtPeriodEnd === true;
                   const canReactivate = cancelAtPeriodEnd && isCurrent;
@@ -372,10 +407,26 @@ const UsageBilling: React.FC = () => {
 
                   const featureKeys =
                     planKey === 'starter'
-                      ? ['usageBilling.planStarterFeature1', 'usageBilling.planStarterFeature2', 'usageBilling.planStarterFeature3']
+                      ? [
+                          'usageBilling.planStarterFeature1',
+                          'usageBilling.planStarterFeature2',
+                          'usageBilling.planStarterFeature3',
+                          // Chat: up to 10 questions per invoice about extracted data
+                          'usageBilling.planStarterChatFeature',
+                        ]
                       : planKey === 'pro'
-                        ? ['usageBilling.planProFeature1', 'usageBilling.planProFeature2', 'usageBilling.planProFeature3']
-                        : ['usageBilling.planEnterpriseFeature1', 'usageBilling.planEnterpriseFeature2', 'usageBilling.planEnterpriseFeature3'];
+                        ? [
+                            'usageBilling.planProFeature1',
+                            'usageBilling.planProFeature2',
+                            'usageBilling.planProFeature3',
+                            // Chat: up to 25 questions per invoice + broader accounting questions
+                            'usageBilling.planProChatFeature',
+                          ]
+                        : [
+                            'usageBilling.planEnterpriseFeature1',
+                            'usageBilling.planEnterpriseFeature2',
+                            'usageBilling.planEnterpriseFeature3',
+                          ];
                   const features = featureKeys.map((key) => t(key));
 
                   const buttonLabel = canCancelScheduledDowngrade
@@ -391,10 +442,12 @@ const UsageBilling: React.FC = () => {
                             : isCurrent
                               ? t('usageBilling.currentPlanLabel')
                               : isEnterprise
-                                ? t('usageBilling.contactSales')
-                                : planKey === 'starter'
-                                  ? t('usageBilling.downgrade')
-                                  : t('usageBilling.upgrade');
+                                ? t('usageBilling.contactUs')
+                                : summary?.isTrial && (planKey === 'starter' || planKey === 'pro')
+                                  ? t('usageBilling.subscribe')
+                                  : planKey === 'starter'
+                                    ? t('usageBilling.downgrade')
+                                    : t('usageBilling.upgrade');
 
                   const isUpgradeWithActiveSub =
                     summary?.plan === 'starter' &&
@@ -403,6 +456,15 @@ const UsageBilling: React.FC = () => {
 
                   const handleClick = async () => {
                     if (downgradeAlreadyScheduled) {
+                      return;
+                    }
+                    if (isEnterprise && !isCurrent) {
+                      setContactEmail(user?.email ?? '');
+                      setContactPhone('');
+                      setContactName('');
+                      setContactMessage('');
+                      setContactSubmitError(null);
+                      setContactDialogOpen(true);
                       return;
                     }
                     if (canReactivate) {
@@ -433,7 +495,7 @@ const UsageBilling: React.FC = () => {
                       }
                       return;
                     }
-                    if (!isSubscriptionCanceled && !cancelAtPeriodEnd && (isCurrent || isEnterprise)) return;
+                    if (!isSubscriptionCanceled && !cancelAtPeriodEnd && isCurrent) return;
                     setError(null);
                     try {
                       if (isSubscriptionCanceled) {
@@ -535,7 +597,9 @@ const UsageBilling: React.FC = () => {
                           </List>
                           {isUpgradeWithActiveSub && upgradePreview && (
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, flex: '0 0 auto' }}>
-                              {t('usageBilling.upgradeProrated', { amount: formatAmountFromCents(upgradePreview.amountCents, upgradePreview.currency) })}
+                              {upgradePreview.amountCents === 0
+                                ? t('usageBilling.upgradeProratedNoCharge')
+                                : t('usageBilling.upgradeProrated', { amount: formatAmountFromCents(upgradePreview.amountCents, upgradePreview.currency) })}
                             </Typography>
                           )}
                           {isDowngrade && downgradePreview && !downgradeAlreadyScheduled && (
@@ -547,7 +611,7 @@ const UsageBilling: React.FC = () => {
                           <Button
                             variant={canCancelScheduledDowngrade || canReactivate || isSubscriptionCanceled ? 'contained' : isCurrent && !downgradeAlreadyScheduled ? 'outlined' : 'contained'}
                             fullWidth
-                            disabled={!canCancelScheduledDowngrade && !canReactivate && !isSubscriptionCanceled && (isCurrent || isEnterprise || downgradeAlreadyScheduled || loading)}
+                            disabled={!canCancelScheduledDowngrade && !canReactivate && !isSubscriptionCanceled && (isCurrent || downgradeAlreadyScheduled || loading)}
                             onClick={handleClick}
                           >
                             {buttonLabel}
@@ -656,6 +720,94 @@ const UsageBilling: React.FC = () => {
             startIcon={cancelLoading ? <CircularProgress size={18} color="inherit" /> : null}
           >
             {cancelLoading ? t('usageBilling.canceling') : t('usageBilling.confirmCancel')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={contactDialogOpen}
+        onClose={() => {
+          if (!contactSending) setContactDialogOpen(false);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>{t('usageBilling.contactDialogTitle')}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <TextField
+              label={t('usageBilling.contactEmail')}
+              type="email"
+              value={contactEmail}
+              onChange={(e) => setContactEmail(e.target.value)}
+              required
+              fullWidth
+              autoComplete="email"
+            />
+            <TextField
+              label={t('usageBilling.contactPhone')}
+              type="tel"
+              value={contactPhone}
+              onChange={(e) => setContactPhone(e.target.value)}
+              required
+              fullWidth
+              autoComplete="tel"
+            />
+            <TextField
+              label={t('usageBilling.contactName')}
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+              fullWidth
+              autoComplete="name"
+            />
+            <TextField
+              label={t('usageBilling.contactMessage')}
+              value={contactMessage}
+              onChange={(e) => setContactMessage(e.target.value)}
+              multiline
+              rows={3}
+              fullWidth
+            />
+            {contactSubmitError && (
+              <Typography variant="body2" color="error">
+                {contactSubmitError}
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setContactDialogOpen(false)} disabled={contactSending}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              const email = contactEmail.trim();
+              const phone = contactPhone.trim();
+              if (!email || !phone) {
+                setContactSubmitError(t('usageBilling.contactError'));
+                return;
+              }
+              setContactSending(true);
+              setContactSubmitError(null);
+              try {
+                await apiClient.post('/api/contact', {
+                  email,
+                  phone,
+                  name: contactName.trim() || undefined,
+                  message: contactMessage.trim() || undefined,
+                });
+                setSuccessMessage(t('usageBilling.contactSuccess'));
+                setContactDialogOpen(false);
+              } catch (err: any) {
+                setContactSubmitError(err?.response?.data?.error ?? t('usageBilling.contactError'));
+              } finally {
+                setContactSending(false);
+              }
+            }}
+            disabled={contactSending}
+            startIcon={contactSending ? <CircularProgress size={18} color="inherit" /> : null}
+          >
+            {contactSending ? null : t('usageBilling.contactSend')}
           </Button>
         </DialogActions>
       </Dialog>

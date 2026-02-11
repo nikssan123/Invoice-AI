@@ -7,10 +7,14 @@ from dotenv import load_dotenv
 # Load .env from ocr-service directory when running locally
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+import asyncio
 import io
+import json
 import logging
 import os
 import uuid
+from typing import Any
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from PIL import Image
@@ -219,3 +223,105 @@ async def extract_rules(payload: ExtractRequest) -> ExtractResponse:
     ocr_text = payload.ocrText if payload.ocrText else "\n".join(payload.lines or [])
     logger.info("[%s] Rule-based extract (len=%d)", request_id, len(ocr_text))
     return extract_invoice_rules(ocr_text)
+
+
+# ---- Invoice chat (accountant Q&A over extraction JSON) ----
+
+class ChatHistoryItem(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class InvoiceChatRequest(BaseModel):
+    extraction: dict[str, Any]
+    message: str
+    history: list[ChatHistoryItem] = []
+    plan: str = "starter"  # "starter" | "pro" | "enterprise"
+
+
+class InvoiceChatResponse(BaseModel):
+    content: str
+
+
+STARTER_SYSTEM_PROMPT = (
+    "You are a professional accountant. Answer only questions about the provided invoice's data and basic accounting. "
+    "Use only the extraction JSON you are given as context. "
+    "If the user asks generic accounting or other questions beyond this invoice, "
+    "explain what can and cannot be concluded from the available data, and what typical accounting treatment would be, "
+    "but do NOT tell the user to consult another accountant—you are the accountant in this conversation."
+)
+
+PRO_ENTERPRISE_SYSTEM_PROMPT = (
+    "You are a professional accountant. You have extracted data for a specific invoice as structured JSON. "
+    "You may answer questions about this invoice AND general accounting questions (e.g. VAT rules, typical treatments), "
+    "using the extraction JSON as context when it is relevant. "
+    "If the question is unrelated to accounting or invoices, politely refuse to answer. "
+    "Do NOT tell the user to consult another accountant—you are the accountant in this conversation."
+)
+
+
+async def _invoice_chat_openai(
+    extraction: dict[str, Any],
+    message: str,
+    history: list[ChatHistoryItem],
+    plan: str,
+) -> str:
+    """Call OpenAI chat with a cheaper model; system prompt enforces accountant-only, invoice-only."""
+    from openai import OpenAI
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not set; cannot use invoice chat.")
+    model = os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+
+    client = OpenAI(api_key=api_key)
+    context = json.dumps(extraction, ensure_ascii=False, indent=2)
+    plan_normalized = (plan or "starter").lower()
+    if plan_normalized == "pro" or plan_normalized == "enterprise":
+        system_prompt = PRO_ENTERPRISE_SYSTEM_PROMPT
+    else:
+        system_prompt = STARTER_SYSTEM_PROMPT
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system_prompt + "\n\nExtracted invoice data (JSON):\n" + context},
+    ]
+    for h in history:
+        if h.role in ("user", "assistant"):
+            messages.append({"role": h.role, "content": h.content})
+    messages.append({"role": "user", "content": message})
+
+    def _call() -> str:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=1024,
+        )
+        return (response.choices[0].message.content or "").strip()
+
+    return await asyncio.to_thread(_call)
+
+
+@app.post("/invoice-chat", response_model=InvoiceChatResponse)
+async def invoice_chat(payload: InvoiceChatRequest) -> InvoiceChatResponse:
+    """
+    Answer a question about an invoice using extracted JSON as context.
+    Uses a cheaper OpenAI model and a strict accountant-only system prompt.
+    """
+    request_id = str(uuid.uuid4())[:8]
+    logger.info(
+        "[%s] Invoice-chat request (plan=%s, history=%d)",
+        request_id,
+        payload.plan,
+        len(payload.history),
+    )
+    try:
+        content = await _invoice_chat_openai(payload.extraction, payload.message, payload.history, payload.plan)
+        logger.info("[%s] Invoice-chat completed", request_id)
+        return InvoiceChatResponse(content=content)
+    except RuntimeError as e:
+        if "OPENAI" in str(e) or "not set" in str(e).lower():
+            raise HTTPException(status_code=503, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Invoice chat failed") from e
+    except Exception as e:
+        logger.exception("[%s] Invoice chat failed: %s", request_id, e)
+        raise HTTPException(status_code=500, detail="Invoice chat failed") from e

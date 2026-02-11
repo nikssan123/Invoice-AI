@@ -2,11 +2,16 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcrypt";
 import prisma from "../db/index.js";
 import { requireAuth } from "../middleware/auth.js";
+import {
+  cancelSubscriptionImmediatelyForOrganization,
+  deleteCustomerForOrganization,
+} from "../services/stripeBilling.js";
 
 const router = Router();
 
 type UpdateEmailBody = { email: string; currentPassword: string };
 type UpdatePasswordBody = { currentPassword: string; newPassword: string };
+type DeleteAccountBody = { newOwnerId?: string; password?: string };
 
 /**
  * @openapi
@@ -47,12 +52,22 @@ router.get("/me", requireAuth, async (req: Request, res: Response) => {
       typeof user.excelExportColumnLabels === "object" &&
       Object.keys(user.excelExportColumnLabels as Record<string, unknown>).length > 0;
 
+    let isOwner = false;
+    if (user.organizationId) {
+      const org = await prisma.organization.findUnique({
+        where: { id: user.organizationId },
+        select: { ownerId: true },
+      });
+      isOwner = org?.ownerId === user.id;
+    }
+
     res.json({
       id: user.id,
       email: user.email,
       name: user.name,
       organizationId: user.organizationId,
       hasExportConfig,
+      isOwner,
     });
   } catch (err) {
     console.error(err);
@@ -181,6 +196,116 @@ router.put("/password", requireAuth, async (req: Request, res: Response) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+/**
+ * @openapi
+ * /api/profile/delete-account:
+ *   post:
+ *     summary: Delete current user account (owner must transfer ownership or delete org if only member)
+ *     tags:
+ *       - Profile
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               newOwnerId: { type: string }
+ *               password: { type: string }
+ *     responses:
+ *       200:
+ *         description: Account deleted
+ *       400:
+ *         description: Transfer ownership first or invalid request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.post("/delete-account", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const body = (req.body as DeleteAccountBody) || {};
+    const { newOwnerId } = body;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, organizationId: true },
+    });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: user.organizationId },
+      select: { id: true, ownerId: true },
+    });
+    if (!organization) return res.status(404).json({ error: "Organization not found" });
+
+    const isOwner = organization.ownerId === userId;
+    const memberCount = await prisma.user.count({
+      where: { organizationId: user.organizationId },
+    });
+
+    if (!isOwner) {
+      await prisma.user.delete({ where: { id: userId } });
+      return res.status(200).json({ success: true });
+    }
+
+    if (memberCount > 1) {
+      if (newOwnerId && newOwnerId !== userId) {
+        const newOwner = await prisma.user.findUnique({
+          where: { id: newOwnerId },
+          select: { id: true, organizationId: true },
+        });
+        if (!newOwner || newOwner.organizationId !== user.organizationId) {
+          return res.status(400).json({
+            error: "New owner must be another member of this organization",
+          });
+        }
+        await prisma.$transaction([
+          prisma.organization.update({
+            where: { id: user.organizationId },
+            data: { ownerId: newOwnerId },
+          }),
+          prisma.user.update({
+            where: { id: userId },
+            data: { role: "admin" },
+          }),
+        ]);
+        await prisma.user.delete({ where: { id: userId } });
+        return res.status(200).json({ success: true });
+      }
+      return res.status(400).json({
+        error:
+          "Transfer ownership to another member first (provide newOwnerId) or delete the organization when you are the only member",
+      });
+    }
+
+    await cancelSubscriptionImmediatelyForOrganization(user.organizationId);
+    await deleteCustomerForOrganization(user.organizationId);
+
+    const folderIds = await prisma.folder.findMany({
+      where: { organizationId: user.organizationId },
+      select: { id: true },
+    });
+    const ids = folderIds.map((f) => f.id);
+    if (ids.length > 0) {
+      await prisma.invoice.deleteMany({ where: { folderId: { in: ids } } });
+    }
+
+    await prisma.organization.delete({
+      where: { id: user.organizationId },
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: (err as Error).message });
   }
 });
 

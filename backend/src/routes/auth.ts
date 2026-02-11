@@ -6,6 +6,7 @@ import prisma from "../db/index.js";
 import { config } from "../config.js";
 import { requireAuth } from "../middleware/auth.js";
 import { sendWelcomeEmail, sendPasswordResetEmail } from "../services/email.js";
+import { TRIAL_DAYS, TRIAL_DOCUMENT_LIMIT } from "../config/billing.js";
 
 const router = Router();
 const SALT_ROUNDS = 10;
@@ -131,8 +132,13 @@ router.post("/register", async (req: Request, res: Response) => {
       });
     }
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
     const org = await prisma.organization.create({
-      data: { name: orgName.trim() },
+      data: {
+        name: orgName.trim(),
+        trialEndsAt,
+        monthlyInvoiceLimit: TRIAL_DOCUMENT_LIMIT,
+      },
     });
     const user = await prisma.user.create({
       data: {

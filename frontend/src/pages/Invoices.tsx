@@ -691,17 +691,26 @@ const Invoices: React.FC = () => {
           setPendingExtractionIds(res.data.ids);
         }
         setUploadDialogOpen(false);
+        window.dispatchEvent(new CustomEvent('refreshBillingSummary'));
       } catch (err: unknown) {
+        const axiosErr = err as { response?: { data?: { error?: string; code?: string }; status?: number } };
+        const code = axiosErr?.response?.data?.code;
         const message =
-          (err as { response?: { data?: { error?: string }; status?: number } })?.response?.data?.error ??
-          (err as Error)?.message ??
-          'Upload failed';
+          code === 'MONTHLY_LIMIT_REACHED'
+            ? t('usageBilling.monthlyLimitReached')
+            : code === 'SUBSCRIPTION_INACTIVE'
+              ? t('usageBilling.subscriptionInactive')
+              : code === 'TRIAL_EXPIRED'
+                ? t('usageBilling.trialExpired')
+                : axiosErr?.response?.data?.error ??
+                  (err as Error)?.message ??
+                  'Upload failed';
         setUploadError(message);
       } finally {
         setUploading(false);
       }
     },
-    [loadTree]
+    [loadTree, t]
   );
 
   // Get item info for dialogs

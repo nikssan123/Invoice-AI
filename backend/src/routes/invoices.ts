@@ -5,8 +5,9 @@ import { fileURLToPath } from "url";
 import type { Prisma } from "@prisma/client";
 import prisma from "../db/index.js";
 import { upload, getUploadPath } from "../middleware/upload.js";
-import { extractInvoice } from "../services/extractionService.js";
+import { extractInvoice, invoiceChat, type InvoiceChatHistoryItem } from "../services/extractionService.js";
 import { logActivity } from "../services/activityLogger.js";
+import { sendInvoiceApprovedNotification } from "../services/email.js";
 import { assertCanProcessInvoices, incrementInvoicesUsed, UsageLimitError } from "../services/usageLimits.js";
 import { config } from "../config.js";
 import ExcelJS from "exceljs";
@@ -171,6 +172,12 @@ router.post("/upload", upload.array("files", 20), async (req: Request, res: Resp
         if (err.code === "MONTHLY_LIMIT_REACHED") {
           return res.status(402).json({
             error: "The monthly invoice limit has been reached for your plan.",
+            code: err.code,
+          });
+        }
+        if (err.code === "TRIAL_EXPIRED") {
+          return res.status(402).json({
+            error: "Trial has ended. Subscribe to continue using the app.",
             code: err.code,
           });
         }
@@ -910,6 +917,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
     if (!canAccessInvoice(invoice, req)) return res.status(404).json({ error: "Invoice not found" });
 
     await prisma.$transaction([
+      prisma.invoiceChatMessage.deleteMany({ where: { invoiceId: id } }),
       prisma.invoiceFields.deleteMany({ where: { invoiceId: id } }),
       prisma.approval.deleteMany({ where: { invoiceId: id } }),
       prisma.invoice.delete({ where: { id } }),
@@ -984,6 +992,125 @@ router.get("/:id/file", async (req: Request, res: Response) => {
   }
 });
 
+type ChatBody = { message: string; history?: InvoiceChatHistoryItem[] };
+
+/**
+ * @openapi
+ * /api/invoices/{id}/chat:
+ *   post:
+ *     summary: Send a chat message about the invoice (PRO or enterprise with chat enabled)
+ *     tags:
+ *       - Invoices
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [message]
+ *             properties:
+ *               message: { type: string }
+ *               history: { type: array, items: { type: object, properties: { role: { type: string }, content: { type: string } } } }
+ *     responses:
+ *       200:
+ *         description: Assistant reply
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 content: { type: string }
+ *       404:
+ *         description: Invoice not found
+ *       401:
+ *         description: Unauthorized
+ *       503:
+ *         description: Chat service unavailable
+ *       500:
+ *         description: Server error
+ */
+router.post("/:id/chat", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as ChatBody;
+    const message = typeof body?.message === "string" ? body.message.trim() : "";
+    if (!message) return res.status(400).json({ error: "message is required" });
+
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) return res.status(401).json({ error: "Unauthorized" });
+
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { subscriptionPlan: true },
+    });
+    if (!org) return res.status(404).json({ error: "Organization not found" });
+
+    const STARTER_CHAT_USER_MESSAGE_LIMIT = 10;
+    const PRO_CHAT_USER_MESSAGE_LIMIT = 25;
+
+    if (org.subscriptionPlan === "starter" || org.subscriptionPlan === "pro") {
+      const userMessageCount = await prisma.invoiceChatMessage.count({
+        where: { invoiceId: id, role: "user" },
+      });
+
+      if (org.subscriptionPlan === "starter" && userMessageCount >= STARTER_CHAT_USER_MESSAGE_LIMIT) {
+        return res.status(403).json({
+          error:
+            "Starter plan limit reached (10 questions per invoice). Upgrade to Pro for more chat messages and generic accounting help.",
+        });
+      }
+
+      if (org.subscriptionPlan === "pro" && userMessageCount >= PRO_CHAT_USER_MESSAGE_LIMIT) {
+        return res.status(403).json({
+          error: "Pro plan limit reached (25 questions per invoice).",
+        });
+      }
+    }
+
+    const invoice = await prisma.invoice.findUnique({
+      where: { id },
+      include: { fields: true },
+    });
+    if (!invoice) return res.status(404).json({ error: "Invoice not found" });
+    if (!canAccessInvoice(invoice, req)) return res.status(404).json({ error: "Invoice not found" });
+
+    const extraction = buildFieldsResponse(invoice.fields as FieldsRow | null) ?? {};
+    const history: InvoiceChatHistoryItem[] = Array.isArray(body.history)
+      ? body.history.filter(
+          (h): h is InvoiceChatHistoryItem =>
+            h && typeof h === "object" && (h.role === "user" || h.role === "assistant") && typeof (h as InvoiceChatHistoryItem).content === "string"
+        )
+      : [];
+
+    const content = await invoiceChat(extraction, message, history, org.subscriptionPlan as "starter" | "pro" | "enterprise");
+
+    await prisma.invoiceChatMessage.createMany({
+      data: [
+        { invoiceId: id, role: "user", content: message },
+        { invoiceId: id, role: "assistant", content },
+      ],
+    });
+
+    res.json({ content });
+  } catch (err) {
+    const status = (err as { response?: { status: number } })?.response?.status;
+    if (status === 503) return res.status(503).json({ error: "Chat service is temporarily unavailable." });
+    if (status === 404) {
+      return res.status(503).json({
+        error: "Invoice chat is not available. Restart the OCR service (uvicorn) to load the chat endpoint.",
+      });
+    }
+    console.error("Invoice chat failed:", err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 /**
  * @openapi
  * /api/invoices/{id}:
@@ -1024,7 +1151,11 @@ router.get("/:id", async (req: Request, res: Response) => {
   try {
     const invoice = await prisma.invoice.findUnique({
       where: { id: req.params.id },
-      include: { fields: true, approvals: { orderBy: { approvedAt: "desc" }, take: 10 } },
+      include: {
+        fields: true,
+        approvals: { orderBy: { approvedAt: "desc" }, take: 10 },
+        chatMessages: { orderBy: { createdAt: "asc" } },
+      },
     });
     if (!invoice) return res.status(404).json({ error: "Invoice not found" });
     if (!canAccessInvoice(invoice, req)) return res.status(404).json({ error: "Invoice not found" });
@@ -1044,6 +1175,12 @@ router.get("/:id", async (req: Request, res: Response) => {
         approvedBy: a.approvedBy,
         approvedAt: a.approvedAt,
         action: a.action,
+      })),
+      chatMessages: invoice.chatMessages.map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        timestamp: m.createdAt.toISOString(),
       })),
     });
   } catch (err) {
@@ -1232,6 +1369,27 @@ router.post("/:id/approve", async (req: Request, res: Response) => {
         entityName: invoice.filename,
         metadata: { action },
       });
+      // Send approval email notification if enabled (non-blocking)
+      const approverEmail = req.user?.email;
+      if (approverEmail) {
+        const filename = invoice.filename;
+        const approvedByStr = approvedBy;
+        setImmediate(() => {
+          prisma.organization
+            .findUnique({
+              where: { id: organizationId },
+              select: { emailNotificationsOnApproval: true },
+            })
+            .then((org) => {
+              const sendNotification =
+                (org as { emailNotificationsOnApproval?: boolean } | null)?.emailNotificationsOnApproval ?? true;
+              if (sendNotification) {
+                return sendInvoiceApprovedNotification(approverEmail, filename, approvedByStr);
+              }
+            })
+            .catch((err) => console.error("Approval notification email failed:", err));
+        });
+      }
     }
 
     res.json({

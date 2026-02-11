@@ -264,3 +264,21 @@ export async function extractInvoice(
   }
 }
 
+export type InvoiceChatHistoryItem = { role: "user" | "assistant"; content: string };
+
+/** Call ocr-service POST /invoice-chat for accountant Q&A over extraction JSON. */
+export async function invoiceChat(
+  extraction: Record<string, unknown>,
+  message: string,
+  history: InvoiceChatHistoryItem[],
+  plan: "starter" | "pro" | "enterprise"
+): Promise<string> {
+  const base = (config.ocrServiceUrl ?? "http://localhost:8000").replace(/\/$/, "");
+  const { data } = await axios.post<{ content: string }>(
+    `${base}/invoice-chat`,
+    { extraction, message, history, plan },
+    { timeout: OCR_TIMEOUT_MS }
+  );
+  return data.content;
+}
+

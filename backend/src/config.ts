@@ -15,6 +15,7 @@ export interface Config {
   smtpRefreshToken: string;
   appUrl: string;
   emailFrom?: string;
+  contactEmail?: string;
 }
 
 export const config: Config = {
@@ -31,4 +32,5 @@ export const config: Config = {
   smtpRefreshToken: process.env.SMTP_REFRESH_TOKEN ?? "",
   appUrl: process.env.APP_URL ?? "http://localhost:4173",
   emailFrom: process.env.EMAIL_FROM,
+  contactEmail: process.env.CONTACT_EMAIL,
 };

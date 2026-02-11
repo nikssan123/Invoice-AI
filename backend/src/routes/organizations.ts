@@ -16,6 +16,7 @@ type UpdateEnterpriseBillingBody = {
   subscriptionStatus?: "active" | "past_due" | "canceled";
   currentPeriodStart?: string;
   currentPeriodEnd?: string;
+  enterpriseChatEnabled?: boolean;
 };
 
 /**
@@ -285,6 +286,7 @@ router.patch("/me/billing", async (req: Request, res: Response) => {
       subscriptionStatus?: "active" | "past_due" | "canceled";
       currentPeriodStart?: Date | null;
       currentPeriodEnd?: Date | null;
+      enterpriseChatEnabled?: boolean;
     } = {};
 
     if (typeof body.monthlyInvoiceLimit === "number" && body.monthlyInvoiceLimit > 0) {
@@ -303,6 +305,9 @@ router.patch("/me/billing", async (req: Request, res: Response) => {
     if (typeof body.currentPeriodEnd === "string") {
       data.currentPeriodEnd = new Date(body.currentPeriodEnd);
     }
+    if (typeof body.enterpriseChatEnabled === "boolean") {
+      data.enterpriseChatEnabled = body.enterpriseChatEnabled;
+    }
 
     const updated = await prisma.organization.update({
       where: { id: organizationId },
@@ -317,6 +322,7 @@ router.patch("/me/billing", async (req: Request, res: Response) => {
       currentPeriodStart: updated.currentPeriodStart,
       currentPeriodEnd: updated.currentPeriodEnd,
       invoicesUsedThisPeriod: updated.invoicesUsedThisPeriod,
+      enterpriseChatEnabled: updated.enterpriseChatEnabled,
     });
   } catch (err) {
     console.error(err);
@@ -620,6 +626,89 @@ router.delete("/members/:userId", async (req: Request, res: Response) => {
     await prisma.user.delete({
       where: { id: targetUserId },
     });
+
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+type TransferOwnershipBody = { newOwnerId: string };
+
+/**
+ * @openapi
+ * /api/organizations/transfer-ownership:
+ *   post:
+ *     summary: Transfer organization ownership to another member (owner only)
+ *     tags:
+ *       - Organizations
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [newOwnerId]
+ *             properties:
+ *               newOwnerId: { type: string }
+ *     responses:
+ *       200:
+ *         description: Ownership transferred
+ *       400:
+ *         description: Invalid newOwnerId
+ *       403:
+ *         description: Only the organization owner can transfer ownership
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.post("/transfer-ownership", async (req: Request, res: Response) => {
+  try {
+    const requesterId = req.user?.id;
+    const organizationId = req.user?.organizationId;
+    if (!requesterId || !organizationId) return res.status(401).json({ error: "Unauthorized" });
+
+    const { newOwnerId } = req.body as TransferOwnershipBody;
+    if (!newOwnerId || typeof newOwnerId !== "string") {
+      return res.status(400).json({ error: "newOwnerId is required" });
+    }
+
+    const [organization, newOwner] = await Promise.all([
+      prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { ownerId: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: newOwnerId },
+        select: { id: true, organizationId: true },
+      }),
+    ]);
+
+    if (!organization) return res.status(404).json({ error: "Organization not found" });
+    if (organization.ownerId !== requesterId) {
+      return res.status(403).json({ error: "Only the organization owner can transfer ownership" });
+    }
+    if (!newOwner) return res.status(404).json({ error: "User not found" });
+    if (newOwner.organizationId !== organizationId) {
+      return res.status(400).json({ error: "New owner must be a member of this organization" });
+    }
+    if (newOwnerId === requesterId) {
+      return res.status(400).json({ error: "New owner must be a different user" });
+    }
+
+    await prisma.$transaction([
+      prisma.organization.update({
+        where: { id: organizationId },
+        data: { ownerId: newOwnerId },
+      }),
+      prisma.user.update({
+        where: { id: requesterId },
+        data: { role: "admin" },
+      }),
+    ]);
 
     res.status(200).json({ ok: true });
   } catch (err) {

@@ -63,22 +63,16 @@ const PublicLayout: React.FC<PublicLayoutProps> = ({ children }) => {
               }}
             >
               <Box
-                component="span"
+                component="img"
+                src="/InvoiceLogo.png"
+                alt={t('app.brand')}
                 sx={{
                   width: 32,
                   height: 32,
                   borderRadius: 1,
-                  bgcolor: 'primary.main',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'white',
-                  fontSize: '1rem',
-                  fontWeight: 700,
+                  objectFit: 'contain',
                 }}
-              >
-                IV
-              </Box>
+              />
               {t('app.brand')}
             </Typography>
 
