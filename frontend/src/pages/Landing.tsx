@@ -592,6 +592,14 @@ const Landing: React.FC = () => {
               <Button
                 variant="outlined"
                 size="large"
+                onClick={() => {
+                  setContactEmail('');
+                  setContactPhone('');
+                  setContactName('');
+                  setContactMessage('');
+                  setContactSubmitError(null);
+                  setContactDialogOpen(true);
+                }}
                 sx={{
                   borderColor: 'white',
                   color: 'white',
