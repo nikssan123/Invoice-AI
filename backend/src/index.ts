@@ -1,5 +1,9 @@
+import path from "path";
+import { fileURLToPath } from "url";
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
+import session from "express-session";
 import swaggerUi from "swagger-ui-express";
 import { config } from "./config.js";
 import { requireAuth } from "./middleware/auth.js";
@@ -13,11 +17,31 @@ import billingRoutes from "./routes/billing.js";
 import billingWebhookRoutes from "./routes/billingWebhook.js";
 import billingSummaryRoutes from "./routes/billingSummary.js";
 import contactRoutes from "./routes/contact.js";
+import adminRoutes from "./routes/admin.js";
 import { swaggerSpec } from "./swagger.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
+app.set("trust proxy", 1);
 app.use(cors({ origin: true }));
+app.use(cookieParser());
+app.use(
+  session({
+    secret: config.jwtSecret,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 24 * 60 * 60 * 1000,
+    },
+  })
+);
+app.use(express.urlencoded({ extended: true }));
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "..", "views"));
 // Skip JSON body parsing for Stripe webhook so the route can use raw body for signature verification
 app.use((req, _res, next) => {
   if (req.originalUrl === "/api/billing/webhook" && req.method === "POST") return next();
@@ -35,6 +59,7 @@ app.use("/api/billing", billingWebhookRoutes);
 app.use("/api/billing", requireAuth, billingRoutes);
 app.use("/api/billing", requireAuth, billingSummaryRoutes);
 app.use("/api/contact", requireAuth, contactRoutes);
+app.use("/api/admin", adminRoutes);
 
 /**
  * @openapi

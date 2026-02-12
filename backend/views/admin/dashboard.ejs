@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f5f5f5; min-height: 100vh; display: flex; }
+    .sidebar { width: 220px; background: #1e293b; color: #e2e8f0; padding: 1rem 0; flex-shrink: 0; }
+    .sidebar a { display: block; padding: 0.5rem 1rem; color: #e2e8f0; text-decoration: none; }
+    .sidebar a:hover { background: #334155; }
+    .sidebar h2 { padding: 0 1rem; margin: 0 0 1rem; font-size: 1rem; }
+    .sidebar form { padding: 0 1rem; margin-top: 1rem; }
+    .sidebar button { width: 100%; padding: 0.5rem; background: #475569; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    .sidebar button:hover { background: #64748b; }
+    .main { flex: 1; padding: 2rem; }
+    h1 { margin: 0 0 1rem; font-size: 1.5rem; }
+    .stats { margin-bottom: 1.5rem; color: #64748b; font-size: 0.875rem; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #e2e8f0; }
+    th { background: #f8fafc; font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+    a { color: #1976d2; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <nav class="sidebar">
+    <h2>Admin</h2>
+    <% tables.forEach(function(t) { %>
+      <a href="<%= base %>/<%= t.name %>"><%= t.name %></a>
+    <% }); %>
+    <form method="post" action="<%= base %>/logout" style="margin-top:1rem;">
+      <button type="submit">Logout</button>
+    </form>
+  </nav>
+  <main class="main">
+    <h1>Dashboard</h1>
+    <p class="stats">Total tables: <%= totalTables %></p>
+    <table>
+      <thead>
+        <tr><th>Table</th><th>Rows</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% tables.forEach(function(t) { %>
+          <tr>
+            <td><%= t.name %></td>
+            <td><%= t.rowCount %></td>
+            <td><a href="<%= base %>/<%= t.name %>">View</a></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

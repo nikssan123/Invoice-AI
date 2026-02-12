@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Login</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem; background: #f5f5f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); width: 100%; max-width: 360px; }
+    h1 { margin: 0 0 1.5rem; font-size: 1.25rem; }
+    label { display: block; margin-bottom: 0.25rem; font-size: 0.875rem; color: #333; }
+    input { width: 100%; padding: 0.5rem 0.75rem; margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
+    button { width: 100%; padding: 0.6rem; background: #1976d2; color: #fff; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; }
+    button:hover { background: #1565c0; }
+    .error { color: #c62828; font-size: 0.875rem; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Admin Login</h1>
+    <% if (typeof error === 'string' && error) { %><p class="error"><%= error %></p><% } %>
+    <form method="post" action="<%= base %>/login">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" required autocomplete="username">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required autocomplete="current-password">
+      <button type="submit">Log in</button>
+    </form>
+  </div>
+</body>
+</html>

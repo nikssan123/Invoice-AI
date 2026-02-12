@@ -18,6 +18,9 @@ export interface Config {
   emailLogoUrl?: string;
   emailFrom?: string;
   contactEmail?: string;
+  /** Admin dashboard: from env only, never exposed to client */
+  adminUsername: string;
+  adminPassword: string;
 }
 
 export const config: Config = {
@@ -36,4 +39,6 @@ export const config: Config = {
   emailLogoUrl: process.env.EMAIL_LOGO_URL,
   emailFrom: process.env.EMAIL_FROM,
   contactEmail: process.env.CONTACT_EMAIL,
+  adminUsername: process.env.ADMIN_USERNAME ?? "",
+  adminPassword: process.env.ADMIN_PASSWORD ?? "",
 };
