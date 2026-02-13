@@ -4,6 +4,16 @@ import FormData from "form-data";
 import axios from "axios";
 import { config } from "../config.js";
 
+export type AdditionalFieldType = "text" | "number" | "date" | "boolean";
+
+export interface AdditionalFieldItem {
+  key: string;
+  label: string;
+  value: string | number | boolean;
+  confidence: number;
+  type: AdditionalFieldType;
+}
+
 export interface ExtractedFields {
   supplierName: string | null;
   supplierVatNumber: string | null;
@@ -24,6 +34,7 @@ export interface ExtractedFields {
   vatAmount: number | null;
   totalAmount: number | null;
   confidenceScores: Record<string, number>;
+  additionalFields: AdditionalFieldItem[];
 }
 
 interface OcrPageResult {
@@ -83,6 +94,12 @@ interface OcrExtractRuleResponse {
   confidenceScores?: Record<string, number> | null;
 }
 
+/** New vision response: requiredFields + additionalFields */
+interface OcrVisionResponse {
+  requiredFields: OcrExtractRuleResponse;
+  additionalFields?: AdditionalFieldItem[];
+}
+
 const OCR_TIMEOUT_MS = 60_000;
 const OCR_MAX_RETRIES = 2;
 const OCR_RETRY_DELAY_MS = 2000;
@@ -128,11 +145,12 @@ function emptyExtractedFields(): ExtractedFields {
     vatAmount: null,
     totalAmount: null,
     confidenceScores: { ...emptyScores },
+    additionalFields: [],
   };
 }
 
 /** Map rule-style response (ExtractResponse) to ExtractedFields. Used for both vision and legacy rule-based. */
-function mapRuleResponseToFields(r: OcrExtractRuleResponse): ExtractedFields {
+function mapRuleResponseToFields(r: OcrExtractRuleResponse, additional: AdditionalFieldItem[] = []): ExtractedFields {
   const scores = r.confidenceScores ?? {};
   return {
     supplierName: r.supplier?.name ?? null,
@@ -154,7 +172,30 @@ function mapRuleResponseToFields(r: OcrExtractRuleResponse): ExtractedFields {
     vatAmount: r.amounts?.vat ?? null,
     totalAmount: r.amounts?.total ?? null,
     confidenceScores: typeof scores === "object" && scores !== null ? scores : emptyScores,
+    additionalFields: additional,
   };
+}
+
+function normalizeAdditionalFields(items: unknown[]): AdditionalFieldItem[] {
+  const result: AdditionalFieldItem[] = [];
+  const allowed: AdditionalFieldType[] = ["text", "number", "date", "boolean"];
+  for (const item of items) {
+    if (!item || typeof item !== "object" || !("key" in item) || !("label" in item) || !("value" in item)) continue;
+    const o = item as Record<string, unknown>;
+    const confidence = typeof o.confidence === "number" ? o.confidence : 0;
+    if (confidence < 0.6) continue;
+    const type = allowed.includes((o.type as string) as AdditionalFieldType) ? (o.type as AdditionalFieldType) : "text";
+    const value = o.value;
+    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") continue;
+    result.push({
+      key: String(o.key),
+      label: String(o.label),
+      value,
+      confidence,
+      type,
+    });
+  }
+  return result;
 }
 
 /**
@@ -211,7 +252,7 @@ export async function extractLegacy(
 
     try {
       const ruleRes = await axios.post<OcrExtractRuleResponse>(`${ocrBase}/extract-invoice`, { ocrText }, { timeout: OCR_TIMEOUT_MS });
-      return mapRuleResponseToFields(ruleRes.data);
+      return mapRuleResponseToFields(ruleRes.data, []);
     } catch (_ruleErr) {
       return empty;
     }
@@ -240,14 +281,20 @@ export async function extractInvoice(
       filename,
       contentType: mimeType,
     });
-    const visionRes = await axios.post<OcrExtractRuleResponse>(`${ocrBase}/extract-vision`, form, {
+    const visionRes = await axios.post<OcrVisionResponse | OcrExtractRuleResponse>(`${ocrBase}/extract-vision`, form, {
       headers: form.getHeaders(),
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
       timeout: OCR_TIMEOUT_MS,
       validateStatus: (status) => status >= 200 && status < 300,
     });
-    return mapRuleResponseToFields(visionRes.data);
+    const data = visionRes.data;
+    if (data && typeof data === "object" && "requiredFields" in data && (data as OcrVisionResponse).requiredFields != null) {
+      const payload = data as OcrVisionResponse;
+      const additional = normalizeAdditionalFields(Array.isArray(payload.additionalFields) ? payload.additionalFields : []);
+      return mapRuleResponseToFields(payload.requiredFields, additional);
+    }
+    return mapRuleResponseToFields(data as OcrExtractRuleResponse, []);
   } catch (err) {
     const status = (err as { response?: { status?: number } })?.response?.status;
     const useLegacy =

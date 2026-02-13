@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -105,4 +105,24 @@ class ExtractResponse(BaseModel):
     accountingAccount: Optional[str] = None
     amounts: Optional[RuleAmounts] = None
     confidenceScores: Optional[Dict[str, float]] = None
+
+
+# ---- Vision extraction (POST /extract-vision) extended response ----
+
+
+class AdditionalFieldItem(BaseModel):
+    """Single additional extracted field (dynamic schema)."""
+
+    key: str
+    label: str
+    value: Union[str, int, float, bool]
+    confidence: float = 0.0
+    type: Literal["text", "number", "date", "boolean"]
+
+
+class VisionExtractResponse(BaseModel):
+    """Response body for POST /extract-vision: required fields + additional fields."""
+
+    requiredFields: ExtractResponse
+    additionalFields: List[AdditionalFieldItem] = Field(default_factory=list)
 

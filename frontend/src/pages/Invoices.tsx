@@ -102,6 +102,8 @@ const Invoices: React.FC = () => {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportMode, setExportMode] = useState<'selected' | 'folder' | null>(null);
   const [hasExportConfig, setHasExportConfig] = useState<boolean | null>(null);
+  const [pendingExportIds, setPendingExportIds] = useState<string[] | null>(null);
+  const [includeAdditionalFields, setIncludeAdditionalFields] = useState(true);
 
   const loadTree = useCallback(async (): Promise<
     { folders: Record<string, Folder>; invoices: Record<string, FolderInvoice> } | undefined
@@ -531,11 +533,16 @@ const Invoices: React.FC = () => {
   const fetchExportConfigIfNeeded = async (): Promise<boolean> => {
     if (exportColumns) return true;
     try {
-      const res = await apiClient.get<{ columns: ExportColumnConfig[]; hasConfig: boolean }>(
-        '/api/invoices/config/export'
-      );
+      const res = await apiClient.get<{
+        columns: ExportColumnConfig[];
+        hasConfig: boolean;
+        includeAdditionalFields?: boolean;
+      }>('/api/invoices/config/export');
       setExportColumns(res.data.columns);
       setHasExportConfig(res.data.hasConfig);
+      if (typeof res.data.includeAdditionalFields === 'boolean') {
+        setIncludeAdditionalFields(res.data.includeAdditionalFields);
+      }
       return true;
     } catch (err: unknown) {
       const message =
@@ -547,16 +554,16 @@ const Invoices: React.FC = () => {
     }
   };
 
-  const startExportWithMode = async (mode: 'selected' | 'folder') => {
+  const startExportWithMode = async (mode: 'selected' | 'folder', invoiceIdsOverride?: string[]) => {
     const ok = await fetchExportConfigIfNeeded();
     if (!ok) return;
-    // If user has no config yet, show dialog once to initialize it.
-    if (hasExportConfig === false) {
+    const isRowExport = invoiceIdsOverride != null && invoiceIdsOverride.length > 0;
+    if (hasExportConfig === false || isRowExport) {
       setExportMode(mode);
+      setPendingExportIds(invoiceIdsOverride ?? null);
       setExportDialogOpen(true);
     } else {
-      // Config already exists: run export directly without showing dialog.
-      await runExport(mode);
+      await runExport(mode, invoiceIdsOverride);
     }
   };
 
@@ -570,12 +577,22 @@ const Invoices: React.FC = () => {
     await startExportWithMode('folder');
   };
 
-  const runExport = async (mode: 'selected' | 'folder') => {
+  const handleExportSingle = async (invoiceId: string) => {
+    if (exporting) return;
+    await startExportWithMode('selected', [invoiceId]);
+  };
+
+  const runExport = async (
+    mode: 'selected' | 'folder',
+    invoiceIdsOverride?: string[],
+    includeAdditionalFieldsOverride?: boolean
+  ) => {
+    const includeAdditional = includeAdditionalFieldsOverride ?? includeAdditionalFields;
     setActionError(null);
     setExporting(true);
     try {
       if (mode === 'selected') {
-        const ids = Array.from(selectedInvoices);
+        const ids = invoiceIdsOverride ?? Array.from(selectedInvoices);
         if (ids.length === 0) return;
         const response = await apiClient.post<ArrayBuffer>(
           '/api/invoices/export',
@@ -583,6 +600,7 @@ const Invoices: React.FC = () => {
             scope: 'selected',
             invoiceIds: ids,
             onlyConfirmed: true,
+            includeAdditionalFields: includeAdditional,
           },
           {
             responseType: 'arraybuffer',
@@ -600,6 +618,7 @@ const Invoices: React.FC = () => {
             folderIds: [selectedFolderId],
             includeSubfolders: true,
             onlyConfirmed: true,
+            includeAdditionalFields: includeAdditional,
           },
           {
             responseType: 'arraybuffer',
@@ -649,11 +668,16 @@ const Invoices: React.FC = () => {
       setExporting(false);
       setExportDialogOpen(false);
       setExportMode(null);
+      setPendingExportIds(null);
     }
   };
 
-  const handleConfirmExportColumns = async (cols: ExportColumnConfig[]) => {
+  const handleConfirmExportColumns = async (
+    cols: ExportColumnConfig[],
+    includeAdditionalFieldsChoice: boolean
+  ) => {
     setExportColumns(cols);
+    setIncludeAdditionalFields(includeAdditionalFieldsChoice);
     try {
       const labels: Record<string, string> = {};
       cols.forEach((c) => {
@@ -670,7 +694,7 @@ const Invoices: React.FC = () => {
     }
     setHasExportConfig(true);
     if (exportMode) {
-      await runExport(exportMode);
+      await runExport(exportMode, pendingExportIds ?? undefined, includeAdditionalFieldsChoice);
     }
   };
 
@@ -996,6 +1020,7 @@ const Invoices: React.FC = () => {
             onSelectAll={handleSelectAllInvoices}
             onDeleteInvoice={handleDeleteInvoice}
             onMoveInvoice={handleMoveInvoice}
+            onExportInvoice={handleExportSingle}
             onFolderClick={(folderId) => {
               setSelectedFolderId(folderId);
               setSelectedInvoices(new Set());
@@ -1135,6 +1160,7 @@ const Invoices: React.FC = () => {
         open={exportDialogOpen}
         columns={exportColumns || []}
         loading={exporting}
+        includeAdditionalFields={includeAdditionalFields}
         onClose={() => {
           if (!exporting) {
             setExportDialogOpen(false);

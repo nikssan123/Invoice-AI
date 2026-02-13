@@ -243,6 +243,8 @@
     "noInvoicesToExport": "There are no invoices to export. Only approved invoices with completed data extraction can be exported.",
     "exportConfigTitle": "Customize Excel columns",
     "exportConfigDescription": "Edit the column names for your Excel export. Your preferences will be saved for future exports.",
+    "exportAdditionalFieldsNote": "Any additional extracted fields will be included in the Excel export.",
+    "exportIncludeAdditionalFields": "Include additional fields in export",
     "exportColumnDefaultLabel": "Default",
     "exportColumnCurrentLabel": "Column name in Excel",
     "exportColumnValidation": "Column name cannot be empty.",
@@ -266,7 +268,9 @@
     "subfolders": "Subfolders",
     "extracting": "Extracting...",
     "extractionInProgress": "Extraction in progress. You can open the invoice when extraction is complete.",
-    "openAvailableAfterExtraction": "Available after extraction"
+    "openAvailableAfterExtraction": "Available after extraction",
+    "exportToExcel": "Export to Excel",
+    "exportAvailableAfterApproved": "Only approved invoices with extracted data can be exported"
   },
   "folderDialogs": {
     "createNewFolder": "Create new folder",
@@ -509,6 +513,12 @@
     "excelSettingsSave": "Save Excel settings",
     "excelSettingsSaveSuccess": "Excel export settings saved.",
     "excelSettingsSaveError": "Failed to save Excel export settings.",
+    "excelIncludeAdditionalFields": "Include additional extracted fields in export",
+    "excelColumnsToInclude": "Columns to include in export",
+    "excelColumnsAndLabels": "Export columns",
+    "excelColumnsAndLabelsHint": "Check to include in export; edit the label used in Excel.",
+    "excelColumnLabels": "Column labels in Excel",
+    "excelAtLeastOneColumn": "At least one column must be enabled.",
     "tabAccount": "Account",
     "tabSecurity": "Security",
     "tabExcel": "Excel",

@@ -29,6 +29,7 @@ from app.schemas import (
     ExtractInvoiceResponse,
     ExtractRequest,
     ExtractResponse,
+    VisionExtractResponse,
 )
 from app.ocr import extract_text_from_image
 
@@ -161,11 +162,11 @@ async def extract_llm(payload: ExtractInvoiceRequest) -> ExtractInvoiceResponse:
     return response
 
 
-@app.post("/extract-vision", response_model=ExtractResponse)
-async def extract_vision(file: UploadFile = File(...)) -> ExtractResponse:
+@app.post("/extract-vision", response_model=VisionExtractResponse)
+async def extract_vision(file: UploadFile = File(...)) -> VisionExtractResponse:
     """
     Extract structured invoice fields by sending the uploaded image or PDF
-    directly to the OpenAI vision API (no PaddleOCR). Returns rule-style ExtractResponse.
+    directly to the OpenAI vision API. Returns requiredFields + additionalFields.
     """
     request_id = str(uuid.uuid4())[:8]
     if not os.environ.get("OPENAI_API_KEY"):

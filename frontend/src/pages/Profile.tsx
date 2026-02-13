@@ -20,6 +20,8 @@ import {
   Select,
   MenuItem,
   CircularProgress,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -69,6 +71,8 @@ const Profile: React.FC = () => {
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const [exportColumns, setExportColumns] = useState<ExportColumnConfig[] | null>(null);
+  const [includeAdditionalFields, setIncludeAdditionalFields] = useState(true);
+  const [enabledColumnKeys, setEnabledColumnKeys] = useState<string[]>([]);
   const [exportSaving, setExportSaving] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -95,10 +99,20 @@ const Profile: React.FC = () => {
 
   const loadExportConfig = useCallback(async () => {
     try {
-      const res = await apiClient.get<{ columns: ExportColumnConfig[]; hasConfig: boolean }>(
-        '/api/invoices/config/export'
-      );
+      const res = await apiClient.get<{
+        columns: ExportColumnConfig[];
+        hasConfig: boolean;
+        includeAdditionalFields?: boolean;
+        enabledColumnKeys?: string[] | null;
+      }>('/api/invoices/config/export');
       setExportColumns(res.data.columns);
+      setIncludeAdditionalFields(res.data.includeAdditionalFields ?? true);
+      const allKeys = res.data.columns?.map((c) => c.key) ?? [];
+      const enabled =
+        res.data.enabledColumnKeys != null && res.data.enabledColumnKeys.length > 0
+          ? res.data.enabledColumnKeys
+          : allKeys;
+      setEnabledColumnKeys(enabled);
       setExportError(null);
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
@@ -202,6 +216,12 @@ const Profile: React.FC = () => {
     );
   };
 
+  const handleToggleColumn = (key: string) => {
+    setEnabledColumnKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  };
+
   const handleSaveExportConfig = async () => {
     if (!exportColumns) return;
     setExportError(null);
@@ -212,13 +232,21 @@ const Profile: React.FC = () => {
       setExportError(t('invoices.exportColumnValidation'));
       return;
     }
+    if (enabledColumnKeys.length === 0) {
+      setExportError(t('profile.excelAtLeastOneColumn'));
+      return;
+    }
     setExportSaving(true);
     try {
       const labels: Record<string, string> = {};
       exportColumns.forEach((c) => {
         labels[c.key] = c.currentLabel;
       });
-      await apiClient.put('/api/invoices/config/export', { labels });
+      await apiClient.put('/api/invoices/config/export', {
+        labels,
+        includeAdditionalFields,
+        enabledColumnKeys,
+      });
       setSuccessMessage(t('profile.excelSettingsSaveSuccess'));
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
@@ -415,21 +443,49 @@ const Profile: React.FC = () => {
                   {exportError}
                 </Alert>
               )}
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 2,
-                }}
-              >
-                {exportColumns?.map((col) => (
-                  <TextField
-                    key={col.key}
-                    fullWidth
-                    label={col.defaultLabel}
-                    value={col.currentLabel}
-                    onChange={(e) => handleExportLabelChange(col.key, e.target.value)}
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={includeAdditionalFields}
+                    onChange={(e) => setIncludeAdditionalFields(e.target.checked)}
                   />
+                }
+                label={t('profile.excelIncludeAdditionalFields')}
+                sx={{ mb: 2 }}
+              />
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
+                {t('profile.excelColumnsAndLabels')}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                {t('profile.excelColumnsAndLabelsHint')}
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {exportColumns?.map((col) => (
+                  <Box
+                    key={col.key}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2,
+                    }}
+                  >
+                    <Checkbox
+                      checked={enabledColumnKeys.includes(col.key)}
+                      onChange={() => handleToggleColumn(col.key)}
+                      sx={{ flexShrink: 0, p: 0.5 }}
+                    />
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label={col.defaultLabel}
+                      value={col.currentLabel}
+                      onChange={(e) => handleExportLabelChange(col.key, e.target.value)}
+                      disabled={!enabledColumnKeys.includes(col.key)}
+                      sx={{
+                        '& .MuiInputBase-root': { bgcolor: enabledColumnKeys.includes(col.key) ? undefined : 'action.hover' },
+                      }}
+                    />
+                  </Box>
                 ))}
               </Box>
               <Divider sx={{ my: 2 }} />

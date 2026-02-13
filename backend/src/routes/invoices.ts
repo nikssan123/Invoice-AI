@@ -2,10 +2,10 @@ import { Router, Request, Response } from "express";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import prisma from "../db/index.js";
 import { upload, getUploadPath } from "../middleware/upload.js";
-import { extractInvoice, invoiceChat, type InvoiceChatHistoryItem } from "../services/extractionService.js";
+import { extractInvoice, invoiceChat, type AdditionalFieldItem, type InvoiceChatHistoryItem } from "../services/extractionService.js";
 import { logActivity } from "../services/activityLogger.js";
 import { sendInvoiceApprovedNotification } from "../services/email.js";
 import { assertCanProcessInvoices, incrementInvoicesUsed, UsageLimitError } from "../services/usageLimits.js";
@@ -42,6 +42,7 @@ export type FieldsBody = Partial<{
   netAmount: number;
   vatAmount: number;
   totalAmount: number;
+  additionalFields?: AdditionalFieldItem[];
 }>;
 
 type FieldsRow = {
@@ -65,6 +66,7 @@ type FieldsRow = {
   totalAmount?: unknown;
   confidenceScores?: unknown;
   extractedAt?: Date | null;
+  additionalFields?: unknown;
 };
 
 function buildFieldsResponse(f: FieldsRow | null): Record<string, unknown> | null {
@@ -105,6 +107,7 @@ function buildFieldsResponse(f: FieldsRow | null): Record<string, unknown> | nul
     netAmount: num(f.netAmount),
     vatAmount: num(f.vatAmount),
     totalAmount: num(f.totalAmount),
+    additionalFields: Array.isArray(f.additionalFields) ? f.additionalFields : [],
   };
 }
 
@@ -258,6 +261,11 @@ async function extractAndPersistInvoiceForUser(
   const extracted = await extractInvoice(invoiceId, fullPath, invoice.mimeType);
   const now = new Date();
 
+  const additionalFieldsJson =
+    extracted.additionalFields && extracted.additionalFields.length > 0
+      ? (extracted.additionalFields as unknown as Prisma.JsonArray)
+      : [];
+
   const fieldsCreate = {
     invoiceId,
     supplierName: extracted.supplierName,
@@ -280,6 +288,7 @@ async function extractAndPersistInvoiceForUser(
     totalAmount: extracted.totalAmount,
     confidenceScores: extracted.confidenceScores,
     extractedAt: now,
+    additionalFields: additionalFieldsJson,
   };
   const fieldsUpdate = { ...fieldsCreate };
   delete (fieldsUpdate as Record<string, unknown>).invoiceId;
@@ -1275,11 +1284,37 @@ router.patch("/:id/fields", async (req: Request, res: Response) => {
     if (body.netAmount !== undefined) data.netAmount = body.netAmount;
     if (body.vatAmount !== undefined) data.vatAmount = body.vatAmount;
     if (body.totalAmount !== undefined) data.totalAmount = body.totalAmount;
+    if (body.additionalFields !== undefined) {
+      const raw = body.additionalFields;
+      if (!Array.isArray(raw)) {
+        return res.status(400).json({ error: "additionalFields must be an array" });
+      }
+      const allowedTypes = ["text", "number", "date", "boolean"];
+      const validated: AdditionalFieldItem[] = raw
+        .filter(
+          (o) =>
+            o != null && typeof o === "object" && typeof (o as { key?: unknown }).key === "string"
+        )
+        .map((o) => {
+          const key = String((o as { key: string }).key);
+          const label = typeof (o as { label?: unknown }).label === "string" ? (o as { label: string }).label : key;
+          const val = (o as { value?: unknown }).value;
+          const value =
+            typeof val === "string" || typeof val === "number" || typeof val === "boolean"
+              ? val
+              : val != null ? String(val) : "";
+          const type = allowedTypes.includes(String((o as { type?: unknown }).type))
+            ? (String((o as { type: string }).type) as AdditionalFieldItem["type"])
+            : "text";
+          return { key, label, value, confidence: 1, type };
+        });
+      (data as Record<string, unknown>).additionalFields = validated as unknown as Prisma.InputJsonValue;
+    }
 
     const updated = await prisma.invoiceFields.upsert({
       where: { invoiceId: id },
-      create: { invoiceId: id, ...data },
-      update: data,
+      create: { invoiceId: id, ...data } as unknown as Prisma.InvoiceFieldsCreateInput,
+      update: data as unknown as Prisma.InvoiceFieldsUpdateInput,
     });
 
     const response = buildFieldsResponse(updated as FieldsRow);
@@ -1440,7 +1475,11 @@ router.get("/config/export", async (req: Request, res: Response) => {
 
     const user = (await prisma.user.findUnique({
       where: { id: userId },
-    })) as unknown as { excelExportColumnLabels?: unknown } | null;
+    })) as unknown as {
+      excelExportColumnLabels?: unknown;
+      excelExportIncludeAdditionalFields?: boolean | null;
+      excelExportEnabledColumnKeys?: unknown;
+    } | null;
 
     const overrides = (user?.excelExportColumnLabels ?? null) as ExportColumnLabelsOverride | null;
     const hasConfig =
@@ -1457,7 +1496,19 @@ router.get("/config/export", async (req: Request, res: Response) => {
       };
     });
 
-    res.json({ columns: labels, hasConfig });
+    const includeAdditionalFields = user?.excelExportIncludeAdditionalFields ?? true;
+    const rawEnabled = user?.excelExportEnabledColumnKeys;
+    const enabledColumnKeys: string[] | null =
+      Array.isArray(rawEnabled) && rawEnabled.length > 0
+        ? rawEnabled.filter((k): k is string => typeof k === "string")
+        : null;
+
+    res.json({
+      columns: labels,
+      hasConfig,
+      includeAdditionalFields,
+      enabledColumnKeys,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: (err as Error).message });
@@ -1502,28 +1553,60 @@ router.put("/config/export", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const body = req.body as { labels?: Record<string, unknown> };
-    const rawLabels = body.labels;
-    if (!rawLabels || typeof rawLabels !== "object") {
-      return res.status(400).json({ error: "labels object is required" });
+    const body = req.body as {
+      labels?: Record<string, unknown>;
+      includeAdditionalFields?: boolean;
+      enabledColumnKeys?: unknown;
+    };
+
+    const allowedColumnKeys = new Set<ExportColumnKey>(EXPORT_COLUMNS.map((c) => c.key));
+    const updateData: Record<string, unknown> = {};
+
+    if (body.labels !== undefined) {
+      const rawLabels = body.labels;
+      if (!rawLabels || typeof rawLabels !== "object") {
+        return res.status(400).json({ error: "labels must be an object when provided" });
+      }
+      const sanitized: ExportColumnLabelsOverride = {};
+      for (const [key, value] of Object.entries(rawLabels)) {
+        if (!allowedColumnKeys.has(key as ExportColumnKey)) continue;
+        if (typeof value !== "string") continue;
+        const trimmed = value.trim();
+        if (trimmed.length === 0) continue;
+        sanitized[key as ExportColumnKey] = trimmed;
+      }
+      updateData.excelExportColumnLabels = sanitized;
     }
 
-    const allowedKeys = new Set<ExportColumnKey>(EXPORT_COLUMNS.map((c) => c.key));
-    const sanitized: ExportColumnLabelsOverride = {};
+    if (typeof body.includeAdditionalFields === "boolean") {
+      updateData.excelExportIncludeAdditionalFields = body.includeAdditionalFields;
+    }
 
-    for (const [key, value] of Object.entries(rawLabels)) {
-      if (!allowedKeys.has(key as ExportColumnKey)) continue;
-      if (typeof value !== "string") continue;
-      const trimmed = value.trim();
-      if (trimmed.length === 0) continue;
-      sanitized[key as ExportColumnKey] = trimmed;
+    if (body.enabledColumnKeys !== undefined) {
+      const raw = body.enabledColumnKeys;
+      if (!Array.isArray(raw)) {
+        return res.status(400).json({ error: "enabledColumnKeys must be an array when provided" });
+      }
+      const filtered = raw.filter((k): k is string => typeof k === "string");
+      const valid = filtered.every((k) => allowedColumnKeys.has(k as ExportColumnKey));
+      if (!valid) {
+        return res.status(400).json({
+          error: "enabledColumnKeys must only contain valid column keys",
+        });
+      }
+      updateData.excelExportEnabledColumnKeys =
+        filtered.length === 0 ? Prisma.JsonNull : filtered;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        error: "At least one of labels, includeAdditionalFields, or enabledColumnKeys is required",
+      });
     }
 
     await prisma.user.update({
       where: { id: userId },
-      data: {
-        excelExportColumnLabels: sanitized as unknown as Prisma.JsonValue,
-      } as Prisma.UserUpdateInput,
+      data: updateData as unknown as Prisma.UserUpdateInput,
     });
 
     res.json({ success: true });
@@ -1540,12 +1623,14 @@ type ExportRequestBody =
       scope: "selected";
       invoiceIds: string[];
       onlyConfirmed?: boolean;
+      includeAdditionalFields?: boolean;
     }
   | {
       scope: "folder";
       folderIds: string[];
       includeSubfolders?: boolean;
       onlyConfirmed?: boolean;
+      includeAdditionalFields?: boolean;
     };
 
 /**
@@ -1626,6 +1711,8 @@ router.post("/export", async (req: Request, res: Response) => {
     }
 
     const onlyConfirmed = body.onlyConfirmed !== false;
+    const includeAdditionalFieldsFromBody =
+      typeof body.includeAdditionalFields === "boolean" ? body.includeAdditionalFields : undefined;
 
     let candidateInvoiceIds: string[] = [];
 
@@ -1751,43 +1838,106 @@ router.post("/export", async (req: Request, res: Response) => {
 
     const user = (await prisma.user.findUnique({
       where: { id: userId },
-    })) as unknown as { excelExportColumnLabels?: unknown } | null;
+    })) as unknown as {
+      excelExportColumnLabels?: unknown;
+      excelExportIncludeAdditionalFields?: boolean | null;
+      excelExportEnabledColumnKeys?: unknown;
+    } | null;
     const overrides = (user?.excelExportColumnLabels ?? null) as ExportColumnLabelsOverride | null;
-    const mergedColumns = mergeExportColumnLabels(overrides);
+    const includeAdditionalFields =
+      includeAdditionalFieldsFromBody ??
+      (user?.excelExportIncludeAdditionalFields ?? true);
+    const rawEnabled = user?.excelExportEnabledColumnKeys;
+    const enabledColumnKeys: ExportColumnKey[] | null =
+      Array.isArray(rawEnabled) && rawEnabled.length > 0
+        ? (rawEnabled.filter((k): k is string => typeof k === "string") as ExportColumnKey[])
+        : null;
+    const mergedColumns = mergeExportColumnLabels(overrides, enabledColumnKeys);
 
+    type AdditionalCol = { key: string; header: string; width: number };
+    const ADDITIONAL_FIELD_WIDTH = 24;
+    const additionalColumns: AdditionalCol[] = [];
+    if (includeAdditionalFields) {
+      const seen = new Set<string>();
+      for (const inv of filtered) {
+        const raw = (inv.fields as unknown as { additionalFields?: unknown } | null)?.additionalFields;
+        if (!Array.isArray(raw)) continue;
+        for (const item of raw) {
+          const key =
+            item != null && typeof item === "object" && typeof (item as { key?: unknown }).key === "string"
+              ? (item as { key: string }).key
+              : null;
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          const label =
+            typeof (item as { label?: unknown }).label === "string"
+              ? (item as { label: string }).label
+              : key;
+          additionalColumns.push({
+            key: `additional_${key}`,
+            header: label,
+            width: ADDITIONAL_FIELD_WIDTH,
+          });
+        }
+      }
+    }
+
+    const allColumns = [
+      ...mergedColumns.map((col) => ({ header: col.header, key: col.key, width: col.width })),
+      ...additionalColumns.map((col) => ({ header: col.header, key: col.key, width: col.width })),
+    ];
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Invoices");
 
-    worksheet.columns = mergedColumns.map((col) => ({
-      header: col.header,
-      key: col.key,
-      width: col.width,
-    }));
+    worksheet.columns = allColumns;
 
     worksheet.getRow(1).font = { bold: true };
 
+    const fullRowData = (inv: (typeof filtered)[0], f: FieldsRow | null): Record<string, unknown> => ({
+      id: inv.id,
+      fileName: inv.filename,
+      invoiceNumber: f?.invoiceNumber ?? null,
+      invoiceDate: f?.invoiceDate ?? null,
+      supplierName: f?.supplierName ?? null,
+      supplierVatNumber: f?.supplierVatNumber ?? null,
+      supplierAddress: f?.supplierAddress ?? null,
+      supplierEIK: f?.supplierEIK ?? null,
+      clientName: f?.clientName ?? null,
+      clientEIK: f?.clientEIK ?? null,
+      clientVatNumber: f?.clientVatNumber ?? null,
+      currency: f?.currency ?? null,
+      netAmount: f?.netAmount != null ? Number(f.netAmount) : null,
+      vatAmount: f?.vatAmount != null ? Number(f.vatAmount) : null,
+      totalAmount: f?.totalAmount != null ? Number(f.totalAmount) : null,
+      status: inv.status,
+      extractedAt: f?.extractedAt ? (f.extractedAt as Date).toISOString() : null,
+      uploadedAt: inv.createdAt.toISOString(),
+    });
+
     for (const inv of filtered) {
       const f = inv.fields as unknown as FieldsRow | null;
-      worksheet.addRow({
-        id: inv.id,
-        fileName: inv.filename,
-        invoiceNumber: f?.invoiceNumber ?? null,
-        invoiceDate: f?.invoiceDate ?? null,
-        supplierName: f?.supplierName ?? null,
-        supplierVatNumber: f?.supplierVatNumber ?? null,
-        supplierAddress: f?.supplierAddress ?? null,
-        supplierEIK: f?.supplierEIK ?? null,
-        clientName: f?.clientName ?? null,
-        clientEIK: f?.clientEIK ?? null,
-        clientVatNumber: f?.clientVatNumber ?? null,
-        currency: f?.currency ?? null,
-        netAmount: f?.netAmount != null ? Number(f.netAmount) : null,
-        vatAmount: f?.vatAmount != null ? Number(f.vatAmount) : null,
-        totalAmount: f?.totalAmount != null ? Number(f.totalAmount) : null,
-        status: inv.status,
-        extractedAt: f?.extractedAt ? f.extractedAt.toISOString() : null,
-        uploadedAt: inv.createdAt.toISOString(),
-      });
+      const fullRow = fullRowData(inv, f);
+      const row: Record<string, unknown> = {};
+      for (const col of mergedColumns) {
+        row[col.key] = fullRow[col.key] ?? null;
+      }
+      if (includeAdditionalFields && additionalColumns.length > 0) {
+        const raw = (f as unknown as { additionalFields?: unknown })?.additionalFields;
+        const arr = Array.isArray(raw) ? raw : [];
+        const byKey: Record<string, unknown> = {};
+        for (const item of arr) {
+          if (item != null && typeof item === "object" && typeof (item as { key?: unknown }).key === "string") {
+            const k = (item as { key: string }).key;
+            const v = (item as { value?: unknown }).value;
+            byKey[k] = v !== undefined && v !== null ? v : "";
+          }
+        }
+        for (const col of additionalColumns) {
+          const fieldKey = col.key.replace(/^additional_/, "");
+          row[col.key] = byKey[fieldKey] ?? "";
+        }
+      }
+      worksheet.addRow(row);
     }
 
     const dateStr = new Date().toISOString().slice(0, 10);

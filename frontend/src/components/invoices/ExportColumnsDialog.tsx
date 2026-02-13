@@ -8,6 +8,8 @@ import {
   TextField,
   Typography,
   Button,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import type { ExportColumnConfig } from '@/types/export';
@@ -16,18 +18,31 @@ type Props = {
   open: boolean;
   columns: ExportColumnConfig[];
   loading?: boolean;
+  includeAdditionalFields?: boolean;
   onClose: () => void;
-  onConfirm: (columns: ExportColumnConfig[]) => void;
+  onConfirm: (columns: ExportColumnConfig[], includeAdditionalFields: boolean) => void;
 };
 
-const ExportColumnsDialog: React.FC<Props> = ({ open, columns, loading, onClose, onConfirm }) => {
+const ExportColumnsDialog: React.FC<Props> = ({
+  open,
+  columns,
+  loading,
+  includeAdditionalFields: includeAdditionalFieldsProp = true,
+  onClose,
+  onConfirm,
+}) => {
   const { t } = useTranslation();
   const [localColumns, setLocalColumns] = useState<ExportColumnConfig[]>(columns);
   const [hasErrors, setHasErrors] = useState(false);
+  const [includeAdditionalFields, setIncludeAdditionalFields] = useState(includeAdditionalFieldsProp);
 
   useEffect(() => {
     setLocalColumns(columns);
   }, [columns]);
+
+  useEffect(() => {
+    setIncludeAdditionalFields(includeAdditionalFieldsProp);
+  }, [includeAdditionalFieldsProp, open]);
 
   useEffect(() => {
     const anyEmpty = localColumns.some((c) => !c.currentLabel || c.currentLabel.trim().length === 0);
@@ -42,7 +57,7 @@ const ExportColumnsDialog: React.FC<Props> = ({ open, columns, loading, onClose,
 
   const handleConfirm = () => {
     if (hasErrors) return;
-    onConfirm(localColumns);
+    onConfirm(localColumns, includeAdditionalFields);
   };
 
   return (
@@ -52,6 +67,19 @@ const ExportColumnsDialog: React.FC<Props> = ({ open, columns, loading, onClose,
         <Typography variant="body2" sx={{ mb: 2.5 }}>
           {t('invoices.exportConfigDescription')}
         </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          {t('invoices.exportAdditionalFieldsNote')}
+        </Typography>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={includeAdditionalFields}
+              onChange={(e) => setIncludeAdditionalFields(e.target.checked)}
+            />
+          }
+          label={t('invoices.exportIncludeAdditionalFields')}
+          sx={{ mb: 2 }}
+        />
         <Box
           sx={{
             maxHeight: 320,

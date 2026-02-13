@@ -48,20 +48,28 @@ export const EXPORT_COLUMNS: ExportColumnConfig[] = [
 export type ExportColumnLabelsOverride = Partial<Record<ExportColumnKey, string>>;
 
 export function mergeExportColumnLabels(
-  overrides: ExportColumnLabelsOverride | null | undefined
+  overrides: ExportColumnLabelsOverride | null | undefined,
+  enabledKeys?: ExportColumnKey[] | null
 ): { key: ExportColumnKey; header: string; width: number }[] {
   const safeOverrides: Record<string, string> =
     overrides && typeof overrides === "object" ? (overrides as Record<string, string>) : {};
 
-  return EXPORT_COLUMNS.map((col) => {
-    const raw = safeOverrides[col.key];
-    const trimmed = typeof raw === "string" ? raw.trim() : "";
-    const header = trimmed.length > 0 ? trimmed : col.defaultLabel;
-    return {
-      key: col.key,
-      header,
-      width: col.width,
-    };
-  });
+  const allowedSet =
+    enabledKeys != null && enabledKeys.length > 0
+      ? new Set<ExportColumnKey>(enabledKeys as ExportColumnKey[])
+      : null;
+
+  return EXPORT_COLUMNS.filter((col) => (allowedSet == null ? true : allowedSet.has(col.key))).map(
+    (col) => {
+      const raw = safeOverrides[col.key];
+      const trimmed = typeof raw === "string" ? raw.trim() : "";
+      const header = trimmed.length > 0 ? trimmed : col.defaultLabel;
+      return {
+        key: col.key,
+        header,
+        width: col.width,
+      };
+    }
+  );
 }
 

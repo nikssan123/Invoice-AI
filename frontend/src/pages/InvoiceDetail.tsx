@@ -20,6 +20,7 @@ import {
 import {
   ArrowBack as BackIcon,
   CheckCircle as ApproveIcon,
+  Delete as DeleteIcon,
   Edit as EditIcon,
   Send as SendIcon,
   Save as SaveIcon,
@@ -55,6 +56,7 @@ export interface InvoiceDetailApi {
     netAmount?: number | null;
     vatAmount?: number | null;
     totalAmount?: number | null;
+    additionalFields?: Array<{ key: string; label: string; value: string | number | boolean; type: 'text' | 'number' | 'date' | 'boolean'; confidence?: number }>;
   } | null;
   approvals: { approvedBy: string; approvedAt: string; action: string }[];
   chatMessages?: { id: string; role: 'user' | 'assistant'; content: string; timestamp: string }[];
@@ -78,6 +80,8 @@ interface ChatMessage {
   content: string;
   timestamp: string;
 }
+
+export type AdditionalFieldItemFrontend = { key: string; label: string; value: string | number | boolean; type: 'text' | 'number' | 'date' | 'boolean' };
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -189,6 +193,7 @@ const InvoiceDetail: React.FC = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const [formData, setFormData] = useState(defaultFormData);
   const [confidenceScores, setConfidenceScores] = useState<Record<string, number>>(defaultScores);
+  const [additionalFields, setAdditionalFields] = useState<AdditionalFieldItemFrontend[]>([]);
   const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
   const [fileLoadError, setFileLoadError] = useState<string | null>(null);
   const fileUrlRef = useRef<string | null>(null);
@@ -233,6 +238,7 @@ const InvoiceDetail: React.FC = () => {
     setChatMessages([]);
     setFormData(defaultFormData);
     setConfidenceScores(defaultScores);
+    setAdditionalFields([]);
     setFileObjectUrl(null);
     setFileLoadError(null);
     fileUrlRef.current = null;
@@ -275,6 +281,19 @@ const InvoiceDetail: React.FC = () => {
           });
           const scores = f.confidenceScores ?? {};
           setConfidenceScores({ ...defaultScores, ...scores });
+          const raw = f.additionalFields ?? [];
+          setAdditionalFields(
+            Array.isArray(raw)
+              ? raw.map((a: { key?: string; label?: string; value?: string | number | boolean; type?: string }) => ({
+                  key: typeof a?.key === 'string' ? a.key : '',
+                  label: typeof a?.label === 'string' ? a.label : String(a?.key ?? ''),
+                  value: typeof a?.value === 'string' || typeof a?.value === 'number' || typeof a?.value === 'boolean' ? a.value : String(a?.value ?? ''),
+                  type: ['text', 'number', 'date', 'boolean'].includes(String(a?.type)) ? (a.type as 'text' | 'number' | 'date' | 'boolean') : 'text',
+                }))
+              : []
+          );
+        } else {
+          setAdditionalFields([]);
         }
         setLoading(false);
       })
@@ -347,7 +366,7 @@ const InvoiceDetail: React.FC = () => {
     if (!id || invoice?.status === 'approved') return;
     setSavingFields(true);
     try {
-      await apiClient.patch('/api/invoices/' + id + '/fields', {
+      const res = await apiClient.patch<{ additionalFields?: AdditionalFieldItemFrontend[] }>('/api/invoices/' + id + '/fields', {
         supplierName: formData.supplierName,
         supplierAddress: formData.supplierAddress,
         supplierEIK: formData.supplierEIK,
@@ -365,7 +384,19 @@ const InvoiceDetail: React.FC = () => {
         netAmount: formData.netAmount,
         vatAmount: formData.vatAmount,
         totalAmount: formData.totalAmount,
+        additionalFields: additionalFields.map((a) => ({ key: a.key, label: a.label, value: a.value, type: a.type })),
       });
+      const nextAdditional = res.data?.additionalFields;
+      if (Array.isArray(nextAdditional)) {
+        setAdditionalFields(
+          nextAdditional.map((a) => ({
+            key: typeof a?.key === 'string' ? a.key : '',
+            label: typeof a?.label === 'string' ? a.label : '',
+            value: typeof a?.value === 'string' || typeof a?.value === 'number' || typeof a?.value === 'boolean' ? a.value : String(a?.value ?? ''),
+            type: ['text', 'number', 'date', 'boolean'].includes(String(a?.type)) ? (a.type as AdditionalFieldItemFrontend['type']) : 'text',
+          }))
+        );
+      }
       setIsEditing(false);
       setSnackbar({ open: true, message: t('common.save') + ' succeeded', severity: 'success' });
     } catch (err: unknown) {
@@ -625,19 +656,21 @@ const InvoiceDetail: React.FC = () => {
                     </Box>
                     <TextField fullWidth size="small" value={formData.supplierAddress} onChange={(e) => setFormData({ ...formData, supplierAddress: e.target.value })} disabled={!isEditing || isApproved} />
                   </Box>
-                  <Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.supplierEIK')}</Typography>
-                      <ConfidenceIndicator score={getScore(confidenceScores, 'supplierEIK', 'supplier.eik')} lowHighlight />
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">{t('invoiceDetail.supplierEIK')}</Typography>
+                        <ConfidenceIndicator score={getScore(confidenceScores, 'supplierEIK', 'supplier.eik')} lowHighlight />
+                      </Box>
+                      <TextField fullWidth size="small" value={formData.supplierEIK} onChange={(e) => setFormData({ ...formData, supplierEIK: e.target.value })} disabled={!isEditing || isApproved} />
                     </Box>
-                    <TextField fullWidth size="small" value={formData.supplierEIK} onChange={(e) => setFormData({ ...formData, supplierEIK: e.target.value })} disabled={!isEditing || isApproved} />
-                  </Box>
-                  <Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.vatNumber')}</Typography>
-                      <ConfidenceIndicator score={getScore(confidenceScores, 'vatNumber', 'supplier.vat')} lowHighlight />
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">{t('invoiceDetail.vatNumber')}</Typography>
+                        <ConfidenceIndicator score={getScore(confidenceScores, 'vatNumber', 'supplier.vat')} lowHighlight />
+                      </Box>
+                      <TextField fullWidth size="small" value={formData.vatNumber} onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })} disabled={!isEditing || isApproved} />
                     </Box>
-                    <TextField fullWidth size="small" value={formData.vatNumber} onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })} disabled={!isEditing || isApproved} />
                   </Box>
                 </Box>
 
@@ -653,19 +686,21 @@ const InvoiceDetail: React.FC = () => {
                     </Box>
                     <TextField fullWidth size="small" value={formData.clientName} onChange={(e) => setFormData({ ...formData, clientName: e.target.value })} disabled={!isEditing || isApproved} />
                   </Box>
-                  <Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.clientEIK')}</Typography>
-                      <ConfidenceIndicator score={getScore(confidenceScores, 'clientEIK', 'client.eik')} lowHighlight />
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">{t('invoiceDetail.clientEIK')}</Typography>
+                        <ConfidenceIndicator score={getScore(confidenceScores, 'clientEIK', 'client.eik')} lowHighlight />
+                      </Box>
+                      <TextField fullWidth size="small" value={formData.clientEIK} onChange={(e) => setFormData({ ...formData, clientEIK: e.target.value })} disabled={!isEditing || isApproved} />
                     </Box>
-                    <TextField fullWidth size="small" value={formData.clientEIK} onChange={(e) => setFormData({ ...formData, clientEIK: e.target.value })} disabled={!isEditing || isApproved} />
-                  </Box>
-                  <Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">{t('invoiceDetail.clientVatNumber')}</Typography>
-                      <ConfidenceIndicator score={getScore(confidenceScores, 'clientVatNumber', 'client.vat')} lowHighlight />
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">{t('invoiceDetail.clientVatNumber')}</Typography>
+                        <ConfidenceIndicator score={getScore(confidenceScores, 'clientVatNumber', 'client.vat')} lowHighlight />
+                      </Box>
+                      <TextField fullWidth size="small" value={formData.clientVatNumber} onChange={(e) => setFormData({ ...formData, clientVatNumber: e.target.value })} disabled={!isEditing || isApproved} />
                     </Box>
-                    <TextField fullWidth size="small" value={formData.clientVatNumber} onChange={(e) => setFormData({ ...formData, clientVatNumber: e.target.value })} disabled={!isEditing || isApproved} />
                   </Box>
                 </Box>
 
@@ -762,6 +797,84 @@ const InvoiceDetail: React.FC = () => {
                   </Box>
                 </Box>
               </Box>
+              {additionalFields.length > 0 && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
+                    {t('invoiceDetail.additionalExtractedInfo', 'Additional Extracted Information')}
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {additionalFields.map((field, idx) => (
+                      <Box key={field.key + String(idx)} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="caption" color="text.secondary" display="block">{field.label}</Typography>
+                          {field.type === 'boolean' ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', pt: 0.5 }}>
+                              <input
+                                type="checkbox"
+                                checked={field.value === true}
+                                onChange={(e) => {
+                                  const next = [...additionalFields];
+                                  next[idx] = { ...next[idx], value: e.target.checked };
+                                  setAdditionalFields(next);
+                                }}
+                                disabled={!isEditing || isApproved}
+                              />
+                            </Box>
+                          ) : field.type === 'date' ? (
+                            <TextField
+                              fullWidth
+                              size="small"
+                              type="date"
+                              value={typeof field.value === 'string' ? field.value : ''}
+                              onChange={(e) => {
+                                const next = [...additionalFields];
+                                next[idx] = { ...next[idx], value: e.target.value };
+                                setAdditionalFields(next);
+                              }}
+                              disabled={!isEditing || isApproved}
+                            />
+                          ) : field.type === 'number' ? (
+                            <TextField
+                              fullWidth
+                              size="small"
+                              type="number"
+                              value={typeof field.value === 'number' ? field.value : Number(field.value) || ''}
+                              onChange={(e) => {
+                                const next = [...additionalFields];
+                                const v = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                next[idx] = { ...next[idx], value: Number.isNaN(v) ? 0 : v };
+                                setAdditionalFields(next);
+                              }}
+                              disabled={!isEditing || isApproved}
+                            />
+                          ) : (
+                            <TextField
+                              fullWidth
+                              size="small"
+                              value={String(field.value ?? '')}
+                              onChange={(e) => {
+                                const next = [...additionalFields];
+                                next[idx] = { ...next[idx], value: e.target.value };
+                                setAdditionalFields(next);
+                              }}
+                              disabled={!isEditing || isApproved}
+                            />
+                          )}
+                        </Box>
+                        {isEditing && !isApproved && (
+                          <IconButton
+                            size="small"
+                            onClick={() => setAdditionalFields(additionalFields.filter((_, i) => i !== idx))}
+                            aria-label={t('common.remove', 'Remove')}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
             </Box>
           </TabPanel>
 

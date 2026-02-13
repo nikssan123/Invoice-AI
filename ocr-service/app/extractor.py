@@ -8,7 +8,7 @@ from typing import Protocol, runtime_checkable
 
 from PIL import Image
 
-from app.schemas import ExtractResponse, InvoiceFields
+from app.schemas import AdditionalFieldItem, ExtractResponse, InvoiceFields, VisionExtractResponse
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ class OpenAILLMClient:
                     {"role": "user", "content": content},
                 ],
                 temperature=0.0,
-                max_completion_tokens=1024,
+                max_completion_tokens=2048,
             )
             raw = response.choices[0].message.content or ""
             return raw.strip()
@@ -179,14 +179,12 @@ OCR text:
 
 VISION_PROMPT = """The following image(s) show an invoice document. Extract the requested fields from the image(s).
 
-Requirements:
-- Return STRICT JSON only, no explanation or additional text.
-- Use null for missing or unknown fields. Use null for any entire nested object if all its fields are missing.
-- Do NOT invent or guess values not explicitly present in the document.
-- Normalize: dates as YYYY-MM-DD; numbers with optional decimal point, no thousands separators; currency as ISO codes (EUR, USD, BGN).
-- confidenceScores: For each extracted value you are confident about, add a key to confidenceScores with a number from 0.0 (not confident) to 1.0 (very confident). Use keys such as: supplierName, supplierAddress, supplierEik, supplierVat, clientName, clientEik, clientVat, invoiceNumber, invoiceDate, serviceDescription, quantity, unitPrice, serviceTotal, accountingAccount, subtotal, vat, total, currency. Only include keys for fields you actually extracted; use 1.0 when the value was clearly visible and unambiguous, lower values when unclear or partially legible.
+Return STRICT JSON only, no explanation or additional text. Use null for missing or unknown values.
+Do NOT invent or guess values not explicitly present in the document. Normalize: dates as YYYY-MM-DD; numbers with optional decimal point, no thousands separators; currency as ISO codes (EUR, USD, BGN).
 
-Expected JSON format (use exactly these keys):
+You MUST return a JSON object with exactly two top-level keys:
+
+1) "requiredFields": an object with the exact schema below. NEVER omit this object. NEVER put required fields inside additionalFields. Use null for any missing field or nested object.
 {{
   "invoiceNumber": string|null,
   "invoiceDate": string|null,
@@ -195,7 +193,18 @@ Expected JSON format (use exactly these keys):
   "service": {{ "description": string|null, "quantity": string|null, "unitPrice": number|null, "total": number|null }} | null,
   "accountingAccount": string|null,
   "amounts": {{ "subtotal": number|null, "vat": number|null, "total": number|null, "currency": string|null }} | null,
-  "confidenceScores": {{ string: number }} (e.g. "supplierName": 0.95, "invoiceNumber": 1.0, "total": 0.9; 0.0-1.0, only for fields you extracted)
+  "confidenceScores": {{ string: number }} (0.0-1.0 for each extracted required field, e.g. "supplierName": 0.95, "invoiceNumber": 1.0)
+}}
+
+2) "additionalFields": an array of extra structured data that is explicitly present in the document and NOT part of the required schema above. Each item: {{ "key": "camelCaseKey", "label": "Human readable label", "value": string|number|boolean, "confidence": 0.0-1.0, "type": "text"|"number"|"date"|"boolean" }}. Only include items with confidence >= 0.6. Do not hallucinate. Do not duplicate required fields here.
+
+Example overall structure:
+{{
+  "requiredFields": {{ ... }},
+  "additionalFields": [
+    {{ "key": "paymentDueDate", "label": "Payment due date", "value": "2024-12-31", "confidence": 0.9, "type": "date" }},
+    {{ "key": "bankIban", "label": "Bank IBAN", "value": "BG12...", "confidence": 0.85, "type": "text" }}
+  ]
 }}"""
 
 
@@ -228,16 +237,44 @@ def _pil_to_base64_parts(images: list[Image.Image]) -> list[tuple[bytes, str]]:
     return parts
 
 
+def _parse_vision_response(data: dict) -> VisionExtractResponse:
+    """Parse vision API JSON into VisionExtractResponse; filter additionalFields by confidence >= 0.6."""
+    if "requiredFields" in data and data["requiredFields"] is not None:
+        required = ExtractResponse(**data["requiredFields"])
+        raw_additional = data.get("additionalFields") or []
+        allowed_types = ("text", "number", "date", "boolean")
+        additional: list[AdditionalFieldItem] = []
+        for item in raw_additional:
+            if not isinstance(item, dict) or item.get("confidence", 0) < 0.6 or item.get("type") not in allowed_types:
+                continue
+            try:
+                additional.append(
+                    AdditionalFieldItem(
+                        key=str(item.get("key", "")),
+                        label=str(item.get("label", "")),
+                        value=item["value"] if isinstance(item.get("value"), (str, int, float, bool)) else str(item.get("value", "")),
+                        confidence=float(item.get("confidence", 0)),
+                        type=item.get("type", "text"),
+                    )
+                )
+            except Exception:
+                continue
+        return VisionExtractResponse(requiredFields=required, additionalFields=additional)
+    # Legacy: whole object is requiredFields
+    required = ExtractResponse(**data)
+    return VisionExtractResponse(requiredFields=required, additionalFields=[])
+
+
 async def extract_invoice_fields_from_images(
     images: list[Image.Image], document_id: str | None = None
-) -> ExtractResponse:
+) -> VisionExtractResponse:
     """
     Extract invoice fields by sending image(s) to OpenAI vision API.
-    Returns rule-style ExtractResponse (supplier, client, service, amounts, etc.).
+    Returns VisionExtractResponse (requiredFields + additionalFields).
     Requires OPENAI_API_KEY; callers should return 503 when not set.
     """
     if not images:
-        return ExtractResponse()
+        return VisionExtractResponse(requiredFields=ExtractResponse(), additionalFields=[])
     image_parts = _pil_to_base64_parts(images)
     prompt = VISION_PROMPT
     client = get_llm_client()
@@ -248,7 +285,7 @@ async def extract_invoice_fields_from_images(
         raw = await method(image_parts, prompt)
         parsed = _strip_markdown_json(raw)
         data = json.loads(parsed)
-        return ExtractResponse(**data)
+        return _parse_vision_response(data)
     except Exception as exc:
         logger.exception("Vision extraction failed: %s", exc)
         raise

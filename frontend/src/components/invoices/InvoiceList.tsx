@@ -23,6 +23,7 @@ import {
   Visibility as ViewIcon,
   Delete as DeleteIcon,
   DriveFileMove as MoveIcon,
+  Download as DownloadIcon,
   Description as DocIcon,
   FolderOpen as EmptyFolderIcon,
 } from '@mui/icons-material';
@@ -38,6 +39,7 @@ interface InvoiceListProps {
   onSelectAll: (selected: boolean) => void;
   onDeleteInvoice: (invoiceId: string) => void;
   onMoveInvoice: (invoiceId: string) => void;
+  onExportInvoice?: (invoiceId: string) => void;
   onFolderClick?: (folderId: string) => void;
 }
 
@@ -49,6 +51,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
   onSelectAll,
   onDeleteInvoice,
   onMoveInvoice,
+  onExportInvoice,
   onFolderClick,
 }) => {
   const { t } = useTranslation();
@@ -354,6 +357,27 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
             secondary={!canOpenMenuInvoice ? t('invoiceList.openAvailableAfterExtraction') : undefined}
           />
         </MenuItem>
+        {onExportInvoice && (
+          <MenuItem
+            disabled={!menuInvoice || menuInvoice.status !== 'approved' || menuInvoice.extractedAt == null}
+            onClick={() => {
+              if (menuInvoiceId) onExportInvoice(menuInvoiceId);
+              handleMenuClose();
+            }}
+          >
+            <ListItemIcon>
+              <DownloadIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText
+              primary={t('invoiceList.exportToExcel')}
+              secondary={
+                menuInvoice && (menuInvoice.status !== 'approved' || menuInvoice.extractedAt == null)
+                  ? t('invoiceList.exportAvailableAfterApproved')
+                  : undefined
+              }
+            />
+          </MenuItem>
+        )}
         <MenuItem
           onClick={() => {
             if (menuInvoiceId) onMoveInvoice(menuInvoiceId);

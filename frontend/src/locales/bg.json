@@ -243,6 +243,8 @@
     "noInvoicesToExport": "Няма фактури за експорт. Експортират се само одобрени фактури с приключено извличане на данни.",
     "exportConfigTitle": "Персонализиране на колоните за Excel",
     "exportConfigDescription": "Редактирайте имената на колоните за Excel експорта. Вашите предпочитания ще бъдат запазени за бъдещи експорти.",
+    "exportAdditionalFieldsNote": "Всички допълнително извлечени полета ще бъдат включени в Excel експорта.",
+    "exportIncludeAdditionalFields": "Включи допълнителни полета в експорта",
     "exportColumnDefaultLabel": "По подразбиране",
     "exportColumnCurrentLabel": "Име на колона в Excel",
     "exportColumnValidation": "Името на колоната не може да бъде празно.",
@@ -266,7 +268,9 @@
     "subfolders": "Подпапки",
     "extracting": "Извличане...",
     "extractionInProgress": "Извличане на данни. Можете да отворите фактурата, когато приключи.",
-    "openAvailableAfterExtraction": "Достъпно след извличане"
+    "openAvailableAfterExtraction": "Достъпно след извличане",
+    "exportToExcel": "Експорт в Excel",
+    "exportAvailableAfterApproved": "Експортират се само одобрени фактури с извлечени данни"
   },
   "folderDialogs": {
     "createNewFolder": "Създаване на нова папка",
@@ -510,6 +514,12 @@
     "excelSettingsSave": "Запази настройките за Excel",
     "excelSettingsSaveSuccess": "Настройките за Excel експорт са запазени.",
     "excelSettingsSaveError": "Неуспешно запазване на настройките за Excel експорт.",
+    "excelIncludeAdditionalFields": "Включи допълнително извлечени полета в експорта",
+    "excelColumnsToInclude": "Колони за включване в експорта",
+    "excelColumnsAndLabels": "Колони за експорт",
+    "excelColumnsAndLabelsHint": "Отметнете за включване в експорта; редактирайте етикета в Excel.",
+    "excelColumnLabels": "Етикети на колоните в Excel",
+    "excelAtLeastOneColumn": "Поне една колона трябва да е включена.",
     "tabAccount": "Акаунт",
     "tabSecurity": "Сигурност",
     "tabExcel": "Excel",

@@ -7,6 +7,9 @@ backend/uploads/
 .cursor
 dist/
 
+# Windows reserved name (avoid accidental creation from redirects)
+nul
+
 # ocr-service venv
 ocr-service/Lib/
 ocr-service/Scripts/

@@ -47,7 +47,13 @@ router.post("/login", (req: Request, res: Response) => {
     return res.render("admin/login", { error: "Invalid credentials.", base: BASE });
   }
   req.session.admin = true;
-  res.redirect(BASE);
+  req.session.save((err) => {
+    if (err) {
+      console.error("Admin session save error:", err);
+      return res.status(500).send("Session error. Please try again.");
+    }
+    res.redirect(BASE);
+  });
 });
 
 // POST /api/admin/logout
