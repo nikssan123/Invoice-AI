@@ -34,6 +34,7 @@ model Organization {
   subscriptionStatus           SubscriptionStatus @default(active)
   trialEndsAt                  DateTime?
   enterpriseChatEnabled        Boolean      @default(false)
+  chatMessageLimitPerInvoice   Int?
 
   @@index([name])
   @@index([ownerId])

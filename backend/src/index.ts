@@ -2,8 +2,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
 import cors from "cors";
-import cookieParser from "cookie-parser";
-import session from "express-session";
 import swaggerUi from "swagger-ui-express";
 import { config } from "./config.js";
 import { requireAuth } from "./middleware/auth.js";
@@ -25,24 +23,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 app.set("trust proxy", 1);
-app.use(cors({ origin: true }));
-app.use(cookieParser());
-// Only set secure cookie when app is served over HTTPS (by URL or explicit env).
-// NODE_ENV=production over HTTP would otherwise block the session cookie and break admin login.
-const sessionSecure =
-  process.env.SESSION_SECURE_COOKIE === "true" || config.appUrl.startsWith("https");
-app.use(
-  session({
-    secret: config.jwtSecret,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: sessionSecure,
-      maxAge: 24 * 60 * 60 * 1000,
-    },
-  })
-);
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.urlencoded({ extended: true }));
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "..", "views"));

@@ -1,13 +1,26 @@
 import type { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
+import { config } from "../config.js";
 
 /**
- * Redirect to admin login if session is not authenticated for admin.
- * Use on all admin routes except GET/POST /login.
+ * Require valid admin JWT in Authorization: Bearer <token>.
+ * Token payload must contain admin: true.
  */
 export function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
-  if (req.session?.admin === true) {
-    next();
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  res.redirect("/api/admin/login");
+  const token = authHeader.slice(7);
+  try {
+    const payload = jwt.verify(token, config.jwtSecret) as { admin?: boolean };
+    if (payload.admin !== true) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    next();
+  } catch {
+    res.status(401).json({ error: "Unauthorized" });
+  }
 }

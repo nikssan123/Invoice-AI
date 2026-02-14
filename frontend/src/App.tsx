@@ -21,6 +21,12 @@ import UsageBilling from './pages/UsageBilling';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
+import AdminLogin from './pages/admin/AdminLogin';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminTableViewer from './pages/admin/AdminTableViewer';
+import AdminLimits from './pages/admin/AdminLimits';
+import AdminLayout from './components/layout/AdminLayout';
+import AdminProtectedRoute from './components/layout/AdminProtectedRoute';
 
 const queryClient = new QueryClient();
 
@@ -56,6 +62,22 @@ const App = () => (
               <Route path="/usage-billing" element={<UsageBilling />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
+            </Route>
+
+            {/* Admin (session cookie auth, separate from user auth) */}
+            <Route path="/admin">
+              <Route path="login" element={<AdminLogin />} />
+              <Route
+                element={
+                  <AdminProtectedRoute>
+                    <AdminLayout />
+                  </AdminProtectedRoute>
+                }
+              >
+                <Route index element={<AdminDashboard />} />
+                <Route path="tables/:tableName" element={<AdminTableViewer />} />
+                <Route path="limits" element={<AdminLimits />} />
+              </Route>
             </Route>
 
             {/* Catch-all */}

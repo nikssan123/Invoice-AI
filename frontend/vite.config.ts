@@ -11,6 +11,15 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    // Proxy /api to backend so admin session cookie is same-origin (no 401 on /me after login).
+    proxy: process.env.VITE_API_URL
+      ? undefined
+      : {
+          "/api": {
+            target: process.env.VITE_PROXY_API_TARGET ?? "http://localhost:3001",
+            changeOrigin: true,
+          },
+        },
   },
   preview: {
     allowedHosts: true,

@@ -1059,28 +1059,28 @@ router.post("/:id/chat", async (req: Request, res: Response) => {
 
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { subscriptionPlan: true },
+      select: { subscriptionPlan: true, chatMessageLimitPerInvoice: true },
     });
     if (!org) return res.status(404).json({ error: "Organization not found" });
 
-    const STARTER_CHAT_USER_MESSAGE_LIMIT = 10;
-    const PRO_CHAT_USER_MESSAGE_LIMIT = 25;
+    const planDefaultLimit =
+      org.subscriptionPlan === "starter"
+        ? 10
+        : org.subscriptionPlan === "pro"
+          ? 25
+          : null;
+    const effectiveLimit = org.chatMessageLimitPerInvoice ?? planDefaultLimit;
 
-    if (org.subscriptionPlan === "starter" || org.subscriptionPlan === "pro") {
+    if (effectiveLimit != null) {
       const userMessageCount = await prisma.invoiceChatMessage.count({
         where: { invoiceId: id, role: "user" },
       });
-
-      if (org.subscriptionPlan === "starter" && userMessageCount >= STARTER_CHAT_USER_MESSAGE_LIMIT) {
+      if (userMessageCount >= effectiveLimit) {
         return res.status(403).json({
           error:
-            "Starter plan limit reached (10 questions per invoice). Upgrade to Pro for more chat messages and generic accounting help.",
-        });
-      }
-
-      if (org.subscriptionPlan === "pro" && userMessageCount >= PRO_CHAT_USER_MESSAGE_LIMIT) {
-        return res.status(403).json({
-          error: "Pro plan limit reached (25 questions per invoice).",
+            effectiveLimit === 10
+              ? "Starter plan limit reached (10 questions per invoice). Upgrade to Pro for more chat messages and generic accounting help."
+              : `Chat limit reached (${effectiveLimit} questions per invoice).`,
         });
       }
     }
