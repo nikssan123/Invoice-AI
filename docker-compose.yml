@@ -11,6 +11,7 @@ services:
     #   - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   ocr-service:
     build:
@@ -18,6 +19,7 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./ocr-service/.env
+    restart: unless-stopped
 
   backend:
     build:
@@ -39,6 +41,7 @@ services:
     volumes:
       - uploads:/app/uploads
     ports: []
+    restart: unless-stopped
 
   frontend:
     build:
@@ -47,6 +50,7 @@ services:
     depends_on:
       - backend
     ports: []
+    restart: unless-stopped
 
   nginx:
     image: nginx:alpine
